@@ -63,4 +63,18 @@ class EquipmentProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  Future<void> updateBuffDescription(int id, String buffDescription) async {
+    final idx = items.indexWhere((e) => e.id == id);
+    if (idx == -1) return;
+    final updated = items[idx].copyWith(buffDescription: buffDescription);
+    items[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('equipment', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+    }
+    if (kIsWeb) {
+      _webStore.equipment = items.map((e) => e).toList();
+    }
+    notifyListeners();
+  }
 }

@@ -121,6 +121,11 @@ class _SkillRootCardState extends State<_SkillRootCard> {
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: '编辑描述',
+                    onPressed: () => _editDescription(context, widget.skill),
+                    icon: Icon(Icons.edit_note, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
+                  ),
                   _LevelBadge(level: widget.skill.level),
                 ],
               ),
@@ -188,6 +193,40 @@ class _SkillRootCardState extends State<_SkillRootCard> {
       ),
     );
   }
+
+  void _editDescription(BuildContext context, Skill skill) {
+    final ctrl = TextEditingController(text: skill.description);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑技能描述', style: TextStyle(color: EldenTheme.gold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('技能：${skill.name}', style: const TextStyle(color: EldenTheme.textDim, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: EldenTheme.textLight),
+              decoration: const InputDecoration(labelText: '描述（可选）'),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              await context.read<SkillProvider>().updateDescription(skill.id!, ctrl.text.trim());
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('保存', style: TextStyle(color: EldenTheme.gold)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SkillChildTile extends StatelessWidget {
@@ -223,11 +262,50 @@ class _SkillChildTile extends StatelessWidget {
                   style: const TextStyle(color: EldenTheme.textLight, fontSize: 14),
                 ),
               ),
+              IconButton(
+                tooltip: '编辑描述',
+                onPressed: () => _editDescription(context, skill),
+                icon: Icon(Icons.edit_note, size: 18, color: EldenTheme.textDim.withOpacity(0.8)),
+              ),
               _LevelBadge(level: skill.level, small: true),
             ],
           ),
           const SizedBox(height: 6),
           _SkillExpBar(skill: skill, thin: true),
+        ],
+      ),
+    );
+  }
+
+  void _editDescription(BuildContext context, Skill skill) {
+    final ctrl = TextEditingController(text: skill.description);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑技能描述', style: TextStyle(color: EldenTheme.gold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('技能：${skill.name}', style: const TextStyle(color: EldenTheme.textDim, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: EldenTheme.textLight),
+              decoration: const InputDecoration(labelText: '描述（可选）'),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              await context.read<SkillProvider>().updateDescription(skill.id!, ctrl.text.trim());
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('保存', style: TextStyle(color: EldenTheme.gold)),
+          ),
         ],
       ),
     );

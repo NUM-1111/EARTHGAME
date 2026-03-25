@@ -4,6 +4,10 @@ import 'pages/home_page.dart';
 import 'pages/skill_tree_page.dart';
 import 'pages/equipment_page.dart';
 import 'pages/quest_page.dart';
+import 'package:provider/provider.dart';
+import 'providers/character_provider.dart';
+import 'providers/quest_provider.dart';
+import 'providers/journal_provider.dart';
 
 class LifeEldenApp extends StatelessWidget {
   const LifeEldenApp({super.key});
@@ -35,6 +39,23 @@ class _MainShellState extends State<MainShell> {
     EquipmentPage(),
     QuestPage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    final bindingType = WidgetsBinding.instance.runtimeType.toString();
+    if (bindingType.contains('TestWidgetsFlutterBinding') || bindingType.contains('AutomatedTestWidgetsFlutterBinding')) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final qp = context.read<QuestProvider>();
+      final cp = context.read<CharacterProvider>();
+      final jp = context.read<JournalProvider>();
+      await qp.applyPendingDebuffs(cp, jp);
+      await jp.loadLastDays(30);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -4,6 +4,9 @@ import '../database/database_helper.dart';
 import '../database/web_seed_store.dart';
 import '../models/quest.dart';
 import '../models/streak_log.dart';
+import 'character_provider.dart';
+import 'journal_provider.dart';
+import '../models/quest_journal.dart';
 
 class QuestProvider extends ChangeNotifier {
   final _db = DatabaseHelper.instance;
@@ -74,7 +77,8 @@ class QuestProvider extends ChangeNotifier {
       // Daily quests stay active
     } else {
       // Main/side quests become completed
-      final updated = quest.copyWith(status: 'completed');
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final updated = quest.copyWith(status: 'completed', completedDate: today);
       quests[idx] = updated;
       if (!kIsWeb) {
         await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
@@ -87,6 +91,21 @@ class QuestProvider extends ChangeNotifier {
     }
     notifyListeners();
     return reward;
+  }
+
+  Future<void> setQuestCompleted(int questId) async {
+    final idx = quests.indexWhere((q) => q.id == questId);
+    if (idx == -1) return;
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final updated = quests[idx].copyWith(status: 'completed', completedDate: today);
+    quests[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
+    }
+    if (kIsWeb) {
+      _webStore.quests = quests.map((q) => q).toList();
+    }
+    notifyListeners();
   }
 
   Future<void> addQuest(Quest quest) async {
@@ -123,4 +142,131 @@ class QuestProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  Future<void> updateQuestDescription(int questId, String? description) async {
+    final idx = quests.indexWhere((q) => q.id == questId);
+    if (idx == -1) return;
+    final updated = quests[idx].copyWith(description: description);
+    quests[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
+    }
+    if (kIsWeb) {
+      _webStore.quests = quests.map((q) => q).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> applyPendingDebuffs(CharacterProvider cp, JournalProvider jp) async {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().substring(0, 10);
+
+    await jp.pruneOlderThanDays(30);
+
+    for (final quest in quests) {
+      if (quest.status != 'active') continue;
+      if (!quest.debuffEnabled) continue;
+      if (quest.expReward <= 0) continue; // safety: abnormal tasks do nothing
+
+      if (quest.type == 'daily') {
+        await _applyDailyDebuff(quest, cp, jp, today: today, yesterday: yesterday);
+      }
+      if (quest.type == 'side') {
+        await _applySideOverdueDebuff(quest, cp, jp, today: today, yesterday: yesterday);
+      }
+    }
+  }
+
+  Future<void> _applyDailyDebuff(Quest quest, CharacterProvider cp, JournalProvider jp, {required String today, required String yesterday}) async {
+    final streak = streakFor(quest.id ?? -1);
+    if (streak == null) return;
+
+    // If never completed, do not retroactively penalize.
+    final lastCompleted = streak.lastCompletedDate.isEmpty ? today : streak.lastCompletedDate;
+    final lastApplied = streak.lastDebuffAppliedDate.isEmpty ? lastCompleted : streak.lastDebuffAppliedDate;
+
+    String cursor = _addDays(_maxDate(lastCompleted, lastApplied), 1);
+    if (cursor.compareTo(yesterday) > 0) return;
+
+    while (cursor.compareTo(yesterday) <= 0) {
+      final penalty = (quest.expReward * 0.5).round();
+      await cp.applyExpDelta(-penalty);
+      await jp.upsert(QuestJournal(
+        questId: quest.id!,
+        logDate: cursor,
+        completed: false,
+        expDelta: -penalty,
+        reason: 'miss',
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+      cursor = _addDays(cursor, 1);
+    }
+
+    final updated = streak.copyWith(lastDebuffAppliedDate: yesterday);
+    final sIdx = streakLogs.indexWhere((s) => s.questId == quest.id);
+    if (sIdx != -1) streakLogs[sIdx] = updated;
+    if (!kIsWeb) {
+      await _db.update('streak_logs', updated.toMap(), where: 'quest_id = ?', whereArgs: [quest.id!]);
+    }
+    if (kIsWeb) {
+      _webStore.streakLogs = streakLogs.map((s) => s).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> _applySideOverdueDebuff(Quest quest, CharacterProvider cp, JournalProvider jp, {required String today, required String yesterday}) async {
+    if (quest.debuffDueDays == null) return;
+    final created = quest.createdDate.isEmpty ? today : quest.createdDate;
+    final due = _addDays(created, quest.debuffDueDays!);
+
+    // Only overdue days count.
+    if (yesterday.compareTo(due) < 0) return;
+
+    final lastApplied = quest.lastDebuffAppliedDate.isEmpty ? _addDays(due, -1) : quest.lastDebuffAppliedDate;
+    String cursor = _addDays(lastApplied, 1);
+    if (cursor.compareTo(due) < 0) cursor = due;
+
+    if (cursor.compareTo(yesterday) > 0) return;
+
+    String lastDid = '';
+    while (cursor.compareTo(yesterday) <= 0) {
+      final penalty = (quest.expReward * 0.5).round();
+      await cp.applyExpDelta(-penalty);
+      await jp.upsert(QuestJournal(
+        questId: quest.id!,
+        logDate: cursor,
+        completed: false,
+        expDelta: -penalty,
+        reason: 'overdue',
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+      lastDid = cursor;
+      cursor = _addDays(cursor, 1);
+    }
+
+    if (lastDid.isEmpty) return;
+    await _updateQuestDebuffAppliedDate(quest.id!, lastDid);
+  }
+
+  Future<void> _updateQuestDebuffAppliedDate(int questId, String date) async {
+    final idx = quests.indexWhere((q) => q.id == questId);
+    if (idx == -1) return;
+    final updated = quests[idx].copyWith(lastDebuffAppliedDate: date);
+    quests[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
+    }
+    if (kIsWeb) {
+      _webStore.quests = quests.map((q) => q).toList();
+    }
+    notifyListeners();
+  }
+
+  String _addDays(String yyyyMmDd, int days) {
+    final dt = DateTime.parse('${yyyyMmDd}T00:00:00');
+    final next = dt.add(Duration(days: days));
+    return next.toIso8601String().substring(0, 10);
+  }
+
+  String _maxDate(String a, String b) => a.compareTo(b) >= 0 ? a : b;
 }

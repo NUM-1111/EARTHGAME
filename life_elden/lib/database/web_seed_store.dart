@@ -21,6 +21,7 @@ class WebSeedStore {
   List<Equipment> equipment = [];
   List<Quest> quests = [];
   List<StreakLog> streakLogs = [];
+  List<Map<String, dynamic>> questJournals = [];
 
   // Character meta
   String name = 'Jiang Yiwu';
@@ -77,10 +78,12 @@ class WebSeedStore {
           questId: q.id!,
           lastCompletedDate: '',
           currentStreak: 0,
+          lastDebuffAppliedDate: '',
         ));
       }
     }
 
+    questJournals = [];
     _inited = true;
   }
 

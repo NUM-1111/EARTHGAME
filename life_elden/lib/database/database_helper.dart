@@ -8,6 +8,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   Database? _db;
+  static const int _dbVersion = 2;
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -27,8 +28,9 @@ class DatabaseHelper {
 
     return openDatabase(
       path,
-      version: 1,
+      version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -47,6 +49,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         parent_id INTEGER,
+        description TEXT NOT NULL DEFAULT '',
         current_exp INTEGER NOT NULL DEFAULT 0,
         level INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (parent_id) REFERENCES skills(id)
@@ -72,8 +75,14 @@ class DatabaseHelper {
         type TEXT NOT NULL DEFAULT 'daily',
         status TEXT NOT NULL DEFAULT 'active',
         target_skill_id INTEGER,
+        loss_skill_id INTEGER,
         exp_reward INTEGER NOT NULL DEFAULT 0,
         description TEXT,
+        created_date TEXT NOT NULL DEFAULT '',
+        completed_date TEXT NOT NULL DEFAULT '',
+        debuff_enabled INTEGER NOT NULL DEFAULT 0,
+        debuff_due_days INTEGER,
+        last_debuff_applied_date TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (target_skill_id) REFERENCES skills(id)
       )
     ''');
@@ -85,12 +94,60 @@ class DatabaseHelper {
         quest_id INTEGER NOT NULL,
         last_completed_date TEXT NOT NULL,
         current_streak INTEGER NOT NULL DEFAULT 0,
+        last_debuff_applied_date TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (quest_id) REFERENCES quests(id)
+      )
+    ''');
+
+    // ── Quest journals (value-day logs) ──
+    await db.execute('''
+      CREATE TABLE quest_journals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quest_id INTEGER NOT NULL,
+        log_date TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        exp_delta INTEGER NOT NULL DEFAULT 0,
+        reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(quest_id, log_date)
       )
     ''');
 
     // ── Inject seed data ──
     await _seedAll(db);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    // Minimal forward migrations. Additive changes only.
+    if (oldVersion < 2) {
+      // skills.description
+      await db.execute("ALTER TABLE skills ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+
+      // quests extensions for debuff + side dual-skill
+      await db.execute('ALTER TABLE quests ADD COLUMN loss_skill_id INTEGER');
+      await db.execute("ALTER TABLE quests ADD COLUMN created_date TEXT NOT NULL DEFAULT ''");
+      await db.execute("ALTER TABLE quests ADD COLUMN completed_date TEXT NOT NULL DEFAULT ''");
+      await db.execute('ALTER TABLE quests ADD COLUMN debuff_enabled INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE quests ADD COLUMN debuff_due_days INTEGER');
+      await db.execute("ALTER TABLE quests ADD COLUMN last_debuff_applied_date TEXT NOT NULL DEFAULT ''");
+
+      // streak_logs.last_debuff_applied_date
+      await db.execute("ALTER TABLE streak_logs ADD COLUMN last_debuff_applied_date TEXT NOT NULL DEFAULT ''");
+
+      // quest journals
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS quest_journals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          quest_id INTEGER NOT NULL,
+          log_date TEXT NOT NULL,
+          completed INTEGER NOT NULL DEFAULT 0,
+          exp_delta INTEGER NOT NULL DEFAULT 0,
+          reason TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT '',
+          UNIQUE(quest_id, log_date)
+        )
+      ''');
+    }
   }
 
   Future<void> _seedAll(Database db) async {
@@ -112,11 +169,19 @@ class DatabaseHelper {
 
     // Quests
     for (final q in SeedData.quests) {
-      await db.insert('quests', q);
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      await db.insert('quests', {
+        ...q,
+        'created_date': q['created_date'] ?? today,
+        'completed_date': q['completed_date'] ?? '',
+        'debuff_enabled': q['debuff_enabled'] ?? 0,
+        'debuff_due_days': q['debuff_due_days'],
+        'loss_skill_id': q['loss_skill_id'],
+        'last_debuff_applied_date': q['last_debuff_applied_date'] ?? '',
+      });
     }
 
     // Streak logs for daily quests (initial)
-    final dailyQuests = SeedData.quests.where((q) => q['type'] == 'daily');
     int questIdCounter = 1;
     for (final q in SeedData.quests) {
       if (q['type'] == 'daily') {
@@ -124,6 +189,7 @@ class DatabaseHelper {
           'quest_id': questIdCounter,
           'last_completed_date': '',
           'current_streak': 0,
+          'last_debuff_applied_date': '',
         });
       }
       questIdCounter++;

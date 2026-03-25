@@ -6,6 +6,7 @@ import 'providers/character_provider.dart';
 import 'providers/skill_provider.dart';
 import 'providers/equipment_provider.dart';
 import 'providers/quest_provider.dart';
+import 'providers/journal_provider.dart';
 import 'database/database_helper.dart';
 
 void main() async {
@@ -24,6 +25,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => SkillProvider()..load()),
         ChangeNotifierProvider(create: (_) => EquipmentProvider()..load()),
         ChangeNotifierProvider(create: (_) => QuestProvider()..load()),
+        ChangeNotifierProvider(create: (_) => JournalProvider()..loadLastDays(30)),
       ],
       child: const LifeEldenApp(),
     ),

@@ -5,20 +5,20 @@ class SeedData {
   // resolved by insertion order below.
   static const List<Map<String, dynamic>> skills = [
     // Root nodes (parent_id = null)
-    {'id': 1, 'name': 'AI 应用开发', 'parent_id': null, 'current_exp': 0, 'level': 1},
-    {'id': 2, 'name': '后端工程', 'parent_id': null, 'current_exp': 0, 'level': 1},
-    {'id': 3, 'name': '生存与基础', 'parent_id': null, 'current_exp': 0, 'level': 1},
+    {'id': 1, 'name': 'AI 应用开发', 'parent_id': null, 'description': '', 'current_exp': 0, 'level': 1},
+    {'id': 2, 'name': '后端工程', 'parent_id': null, 'description': '', 'current_exp': 0, 'level': 1},
+    {'id': 3, 'name': '生存与基础', 'parent_id': null, 'description': '', 'current_exp': 0, 'level': 1},
     // Children of AI 应用开发 (id=1)
-    {'id': 4, 'name': 'RAG/Agent 架构', 'parent_id': 1, 'current_exp': 0, 'level': 1},
-    {'id': 5, 'name': 'Prompt Engineering', 'parent_id': 1, 'current_exp': 0, 'level': 1},
-    {'id': 6, 'name': '模型本地部署', 'parent_id': 1, 'current_exp': 0, 'level': 1},
+    {'id': 4, 'name': 'RAG/Agent 架构', 'parent_id': 1, 'description': '', 'current_exp': 0, 'level': 1},
+    {'id': 5, 'name': 'Prompt Engineering', 'parent_id': 1, 'description': '', 'current_exp': 0, 'level': 1},
+    {'id': 6, 'name': '模型本地部署', 'parent_id': 1, 'description': '', 'current_exp': 0, 'level': 1},
     // Children of 后端工程 (id=2)
-    {'id': 7, 'name': 'Java 核心', 'parent_id': 2, 'current_exp': 0, 'level': 1},
-    {'id': 8, 'name': '多租户权限管理架构', 'parent_id': 2, 'current_exp': 0, 'level': 1},
-    {'id': 9, 'name': 'SQL 性能优化', 'parent_id': 2, 'current_exp': 0, 'level': 1},
+    {'id': 7, 'name': 'Java 核心', 'parent_id': 2, 'description': '', 'current_exp': 0, 'level': 1},
+    {'id': 8, 'name': '多租户权限管理架构', 'parent_id': 2, 'description': '', 'current_exp': 0, 'level': 1},
+    {'id': 9, 'name': 'SQL 性能优化', 'parent_id': 2, 'description': '', 'current_exp': 0, 'level': 1},
     // Children of 生存与基础 (id=3)
-    {'id': 10, 'name': 'Linux 终端命令', 'parent_id': 3, 'current_exp': 0, 'level': 1},
-    {'id': 11, 'name': '健康追踪（饮食/睡眠/运动）', 'parent_id': 3, 'current_exp': 0, 'level': 1},
+    {'id': 10, 'name': 'Linux 终端命令', 'parent_id': 3, 'description': '', 'current_exp': 0, 'level': 1},
+    {'id': 11, 'name': '健康追踪（饮食/睡眠/运动）', 'parent_id': 3, 'description': '', 'current_exp': 0, 'level': 1},
   ];
 
   // ── Equipment seeds ──
@@ -76,9 +76,13 @@ class SeedData {
       'title': '通关一局《文明6》或解决 Minecraft 启动报错',
       'type': 'side',
       'status': 'active',
-      'target_skill_id': null,
-      'exp_reward': 0,
+      // side: requires two skills (gain + loss) per new rule
+      'target_skill_id': 11, // 健康追踪（饮食/睡眠/运动）
+      'loss_skill_id': 10, // Linux 终端命令
+      'exp_reward': 50,
       'description': '支线任务：精神恢复，消除 [疲惫] 状态。',
+      'debuff_enabled': 1,
+      'debuff_due_days': 3,
     },
   ];
 

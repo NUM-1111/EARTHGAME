@@ -58,17 +58,37 @@ class SkillProvider extends ChangeNotifier {
   }
 
   Future<void> addExpToSkill(int skillId, int amount) async {
+    await applyExpDeltaToSkill(skillId, amount, propagateToParent: true);
+  }
+
+  /// Apply an exp delta to a skill.
+  ///
+  /// - Positive delta: level up as needed.
+  /// - Negative delta: level down as needed (min level = 1, min exp = 0).
+  /// - Parent propagation only happens for positive deltas (by design).
+  Future<void> applyExpDeltaToSkill(int skillId, int delta, {bool propagateToParent = false}) async {
     final idx = skills.indexWhere((s) => s.id == skillId);
     if (idx == -1) return;
 
     var skill = skills[idx];
-    int newExp = skill.currentExp + amount;
+    int newExp = skill.currentExp + delta;
     int newLevel = skill.level;
 
     // Level up loop
     while (newExp >= 100 * newLevel) {
       newExp -= 100 * newLevel;
       newLevel++;
+    }
+
+    // Level down loop (min level 1)
+    while (newExp < 0) {
+      if (newLevel <= 1) {
+        newLevel = 1;
+        newExp = 0;
+        break;
+      }
+      newLevel--;
+      newExp += 100 * newLevel;
     }
 
     skill = skill.copyWith(currentExp: newExp, level: newLevel);
@@ -78,13 +98,11 @@ class SkillProvider extends ChangeNotifier {
       await _db.update('skills', skill.toMap(), where: 'id = ?', whereArgs: [skillId]);
     }
 
-    // Propagate partial exp to parent
-    if (skill.parentId != null) {
-      await addExpToSkill(skill.parentId!, (amount * 0.3).round());
+    if (propagateToParent && delta > 0 && skill.parentId != null) {
+      await applyExpDeltaToSkill(skill.parentId!, (delta * 0.3).round(), propagateToParent: true);
     }
 
     if (kIsWeb) {
-      // Keep web store in sync.
       _webStore.skills = skills.map((s) => s).toList();
     }
     notifyListeners();
@@ -93,7 +111,7 @@ class SkillProvider extends ChangeNotifier {
   Future<void> addSkill(String name, int? parentId) async {
     if (kIsWeb) {
       final nextId = (skills.map((s) => s.id ?? 0).fold<int>(0, (a, b) => b > a ? b : a)) + 1;
-      skills.add(Skill(id: nextId, name: name, parentId: parentId, currentExp: 0, level: 1));
+      skills.add(Skill(id: nextId, name: name, parentId: parentId, description: '', currentExp: 0, level: 1));
       _webStore.skills = skills.map((s) => s).toList();
       notifyListeners();
       return;
@@ -102,10 +120,25 @@ class SkillProvider extends ChangeNotifier {
     final id = await _db.insert('skills', {
       'name': name,
       'parent_id': parentId,
+      'description': '',
       'current_exp': 0,
       'level': 1,
     });
     skills.add(Skill(id: id, name: name, parentId: parentId));
+    notifyListeners();
+  }
+
+  Future<void> updateDescription(int id, String description) async {
+    final idx = skills.indexWhere((s) => s.id == id);
+    if (idx == -1) return;
+    final updated = skills[idx].copyWith(description: description);
+    skills[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('skills', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+    }
+    if (kIsWeb) {
+      _webStore.skills = skills.map((s) => s).toList();
+    }
     notifyListeners();
   }
 }

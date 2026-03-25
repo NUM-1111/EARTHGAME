@@ -175,6 +175,11 @@ class _EquipmentCard extends StatelessWidget {
                         style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w600),
                       ),
                     ),
+                    IconButton(
+                      tooltip: '编辑描述',
+                      onPressed: () => _editBuffDescription(context, equipment),
+                      icon: Icon(Icons.edit_note, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
+                    ),
                     // Rarity badge
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -228,6 +233,46 @@ class _EquipmentCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _editBuffDescription(BuildContext context, Equipment equipment) {
+    final ctrl = TextEditingController(text: equipment.buffDescription);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑装备描述', style: TextStyle(color: EldenTheme.gold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('装备：${equipment.name}', style: const TextStyle(color: EldenTheme.textDim, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: EldenTheme.textLight),
+              decoration: const InputDecoration(
+                labelText: '词条/Buff 描述',
+                hintText: '例：[学习速度 +10%]',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              await context.read<EquipmentProvider>().updateBuffDescription(
+                    equipment.id!,
+                    ctrl.text.trim(),
+                  );
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('保存', style: TextStyle(color: EldenTheme.gold)),
+          ),
+        ],
       ),
     );
   }

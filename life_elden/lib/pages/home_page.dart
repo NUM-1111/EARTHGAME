@@ -4,6 +4,9 @@ import '../theme/elden_theme.dart';
 import '../providers/character_provider.dart';
 import '../providers/skill_provider.dart';
 import '../providers/quest_provider.dart';
+import '../providers/equipment_provider.dart';
+import '../providers/journal_provider.dart';
+import 'log_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -11,7 +14,16 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('L I F E  E L D E N')),
+      appBar: AppBar(
+        title: const Text('L I F E  E L D E N'),
+        actions: [
+          IconButton(
+            tooltip: '菜单',
+            icon: const Icon(Icons.apps),
+            onPressed: () => _openTopRightMenu(context),
+          ),
+        ],
+      ),
       body: Consumer<CharacterProvider>(
         builder: (context, char, _) {
           return SingleChildScrollView(
@@ -30,8 +42,14 @@ class HomePage extends StatelessWidget {
                 // ── Skill overview ──
                 _SkillOverview(),
                 const SizedBox(height: 16),
+                // ── Equipped equipment buffs ──
+                const _EquippedEquipmentBuffs(),
+                const SizedBox(height: 16),
                 // ── Active buffs ──
                 _BuffSection(char: char),
+                const SizedBox(height: 16),
+                // ── Current main quest ──
+                const _CurrentMainQuestCard(),
                 const SizedBox(height: 16),
                 // ── Quick quest summary ──
                 _QuestSummary(),
@@ -40,6 +58,43 @@ class HomePage extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _openTopRightMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: EldenTheme.bgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await context.read<JournalProvider>().loadLastDays(30);
+                        if (context.mounted) {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
+                        }
+                      },
+                      icon: const Icon(Icons.article_outlined),
+                      label: const Text('日志'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -405,6 +460,128 @@ class _QuestSummary extends StatelessWidget {
           Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600)),
         ],
       ),
+    );
+  }
+}
+
+class _EquippedEquipmentBuffs extends StatelessWidget {
+  const _EquippedEquipmentBuffs();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<EquipmentProvider>(
+      builder: (context, ep, _) {
+        final equipped = ep.equipped;
+        if (equipped.isEmpty) {
+          return Container(
+            decoration: EldenTheme.parchmentDecoration,
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(Icons.shield_outlined, size: 16, color: EldenTheme.textDim.withOpacity(0.5)),
+                const SizedBox(width: 8),
+                Text(
+                  '未装备任何道具 — 去装备页点一下即可装备',
+                  style: TextStyle(color: EldenTheme.textDim.withOpacity(0.7), fontSize: 12),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          decoration: EldenTheme.goldBorderDecoration,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.shield, size: 18, color: EldenTheme.goldBright),
+                  SizedBox(width: 6),
+                  Text('装备增益', style: TextStyle(color: EldenTheme.gold, fontSize: 14, fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ...equipped.map((e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: EldenTheme.bgDark.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: EldenTheme.goldDim.withOpacity(0.25)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(e.name, style: const TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600)),
+                          if (e.buffDescription.trim().isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(e.buffDescription, style: const TextStyle(color: EldenTheme.goldBright, fontSize: 12, height: 1.4)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CurrentMainQuestCard extends StatelessWidget {
+  const _CurrentMainQuestCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<QuestProvider, SkillProvider>(
+      builder: (context, qp, sp, _) {
+        final activeMain = qp.mainQuests.where((q) => q.status == 'active').toList();
+        if (activeMain.isEmpty) {
+          return Container(
+            decoration: EldenTheme.parchmentDecoration,
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(Icons.flag_outlined, size: 16, color: EldenTheme.textDim.withOpacity(0.5)),
+                const SizedBox(width: 8),
+                Text(
+                  '当前没有进行中的主线任务',
+                  style: TextStyle(color: EldenTheme.textDim.withOpacity(0.7), fontSize: 12),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final q = activeMain.first;
+        final skillName = q.targetSkillId == null ? null : sp.byId(q.targetSkillId!)?.name;
+
+        return Container(
+          decoration: EldenTheme.parchmentDecoration,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('当前主线', style: TextStyle(color: EldenTheme.gold, fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 10),
+              Text(q.title, style: const TextStyle(color: EldenTheme.textLight, fontSize: 14, fontWeight: FontWeight.w600)),
+              if (skillName != null) ...[
+                const SizedBox(height: 6),
+                Text('关联技能：$skillName', style: const TextStyle(color: EldenTheme.textDim, fontSize: 12)),
+              ],
+              if (q.description != null && q.description!.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(q.description!, style: TextStyle(color: EldenTheme.textDim.withOpacity(0.75), fontSize: 12, height: 1.35)),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

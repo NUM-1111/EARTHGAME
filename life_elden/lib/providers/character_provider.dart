@@ -50,15 +50,17 @@ class CharacterProvider extends ChangeNotifier {
   }
 
   Future<void> addExp(int amount) async {
+    await applyExpDelta(amount);
+  }
+
+  /// Apply an exp delta to the character.
+  ///
+  /// - Positive delta: level up as needed.
+  /// - Negative delta: level down as needed (min level = 1, min exp = 0).
+  Future<void> applyExpDelta(int delta) async {
     if (kIsWeb) {
       _webStore.ensureInit();
-      totalExp += amount;
-      // Level up loop
-      while (totalExp >= expToNextLevel) {
-        totalExp -= expToNextLevel;
-        totalLevel++;
-      }
-      title = phase;
+      _applyDeltaInMemory(delta);
       _webStore.totalExp = totalExp;
       _webStore.totalLevel = totalLevel;
       _webStore.title = title;
@@ -66,16 +68,32 @@ class CharacterProvider extends ChangeNotifier {
       return;
     }
 
-    totalExp += amount;
+    _applyDeltaInMemory(delta);
+    await _save();
+    notifyListeners();
+  }
+
+  void _applyDeltaInMemory(int delta) {
+    totalExp += delta;
+
     // Level up loop
     while (totalExp >= expToNextLevel) {
       totalExp -= expToNextLevel;
       totalLevel++;
     }
-    // Update title based on level
+
+    // Level down loop (min level 1)
+    while (totalExp < 0) {
+      if (totalLevel <= 1) {
+        totalLevel = 1;
+        totalExp = 0;
+        break;
+      }
+      totalLevel--;
+      totalExp += 100 * totalLevel;
+    }
+
     title = phase;
-    await _save();
-    notifyListeners();
   }
 
   Future<void> updateName(String newName) async {

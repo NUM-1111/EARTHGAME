@@ -4,6 +4,8 @@ import '../theme/elden_theme.dart';
 import '../providers/quest_provider.dart';
 import '../providers/character_provider.dart';
 import '../providers/skill_provider.dart';
+import '../providers/journal_provider.dart';
+import '../models/quest_journal.dart';
 import '../models/quest.dart';
 
 class QuestPage extends StatelessWidget {
@@ -50,8 +52,11 @@ class QuestPage extends StatelessWidget {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final expCtrl = TextEditingController(text: '10');
+    final dueDaysCtrl = TextEditingController(text: '3');
     String type = 'daily';
     int? targetSkillId;
+    int? lossSkillId;
+    bool debuffEnabled = true;
 
     final skills = context.read<SkillProvider>().skills;
 
@@ -79,13 +84,17 @@ class QuestPage extends StatelessWidget {
                     DropdownMenuItem(value: 'daily', child: Text('日常', style: TextStyle(color: EldenTheme.questTypeColor('daily')))),
                     DropdownMenuItem(value: 'side', child: Text('支线', style: TextStyle(color: EldenTheme.questTypeColor('side')))),
                   ],
-                  onChanged: (v) => setDialogState(() => type = v ?? 'daily'),
+                  onChanged: (v) => setDialogState(() {
+                    type = v ?? 'daily';
+                    // side requires two skills by new rule
+                    if (type != 'side') lossSkillId = null;
+                  }),
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<int?>(
                   value: targetSkillId,
                   dropdownColor: EldenTheme.bgCard,
-                  decoration: const InputDecoration(labelText: '关联技能（可选）'),
+                  decoration: InputDecoration(labelText: type == 'side' ? '增益技能（必选）' : '关联技能（可选）'),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('无', style: TextStyle(color: EldenTheme.textDim))),
                     ...skills.map((s) => DropdownMenuItem(
@@ -95,12 +104,47 @@ class QuestPage extends StatelessWidget {
                   ],
                   onChanged: (v) => setDialogState(() => targetSkillId = v),
                 ),
+                if (type == 'side') ...[
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<int?>(
+                    value: lossSkillId,
+                    dropdownColor: EldenTheme.bgCard,
+                    decoration: const InputDecoration(labelText: '惩罚技能（必选）'),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('请选择', style: TextStyle(color: EldenTheme.textDim))),
+                      ...skills.map((s) => DropdownMenuItem(
+                            value: s.id,
+                            child: Text(s.name, style: const TextStyle(color: EldenTheme.textLight)),
+                          )),
+                    ],
+                    onChanged: (v) => setDialogState(() => lossSkillId = v),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: dueDaysCtrl,
+                    style: const TextStyle(color: EldenTheme.textLight),
+                    decoration: const InputDecoration(labelText: '到期（创建后 N 天）'),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
                 const SizedBox(height: 10),
                 TextField(
                   controller: expCtrl,
                   style: const TextStyle(color: EldenTheme.textLight),
                   decoration: const InputDecoration(labelText: '经验奖励'),
                   keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 10),
+                SwitchListTile(
+                  value: debuffEnabled,
+                  onChanged: (v) => setDialogState(() => debuffEnabled = v),
+                  activeColor: EldenTheme.gold,
+                  title: const Text('未完成触发 Debuff', style: TextStyle(color: EldenTheme.textLight, fontSize: 13)),
+                  subtitle: Text(
+                    type == 'daily' ? '每天未完成：扣除奖励经验的 50%' : '到期后每天未完成：扣除奖励经验的 50%',
+                    style: const TextStyle(color: EldenTheme.textDim, fontSize: 11),
+                  ),
+                  contentPadding: EdgeInsets.zero,
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -117,12 +161,27 @@ class QuestPage extends StatelessWidget {
             TextButton(
               onPressed: () {
                 if (titleCtrl.text.trim().isNotEmpty) {
+                  final exp = int.tryParse(expCtrl.text) ?? 10;
+                  final safeExp = exp <= 0 ? 1 : exp;
+                  if (type == 'side' && (targetSkillId == null || lossSkillId == null)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('支线任务需要选择“增益技能”和“惩罚技能”')),
+                    );
+                    return;
+                  }
+                  final today = DateTime.now().toIso8601String().substring(0, 10);
                   context.read<QuestProvider>().addQuest(Quest(
                         title: titleCtrl.text.trim(),
                         type: type,
                         targetSkillId: targetSkillId,
-                        expReward: int.tryParse(expCtrl.text) ?? 10,
+                        lossSkillId: lossSkillId,
+                        expReward: safeExp,
                         description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                        createdDate: today,
+                        completedDate: '',
+                        debuffEnabled: debuffEnabled,
+                        debuffDueDays: type == 'side' ? (int.tryParse(dueDaysCtrl.text) ?? 3) : null,
+                        lastDebuffAppliedDate: '',
                       ));
                 }
                 Navigator.pop(ctx);
@@ -209,6 +268,11 @@ class _QuestCard extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 const Spacer(),
+                IconButton(
+                  tooltip: '编辑描述',
+                  onPressed: () => _editDescription(context, quest),
+                  icon: Icon(Icons.edit_note, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
+                ),
                 if (isCompleted)
                   const Icon(Icons.check_circle, size: 18, color: EldenTheme.green)
                 else
@@ -264,6 +328,12 @@ class _QuestCard extends StatelessWidget {
     final qp = context.read<QuestProvider>();
     final cp = context.read<CharacterProvider>();
     final sp = context.read<SkillProvider>();
+    final jp = context.read<JournalProvider>();
+
+    if (quest.type == 'side') {
+      await _completeSideQuest(context, quest, qp, cp, sp, jp);
+      return;
+    }
 
     final reward = await qp.completeQuest(quest.id!);
 
@@ -274,6 +344,15 @@ class _QuestCard extends StatelessWidget {
     if (quest.targetSkillId != null) {
       await sp.addExpToSkill(quest.targetSkillId!, reward);
     }
+
+    await jp.upsert(QuestJournal(
+      questId: quest.id!,
+      logDate: DateTime.now().toIso8601String().substring(0, 10),
+      completed: true,
+      expDelta: reward,
+      reason: 'complete',
+      createdAt: DateTime.now().toIso8601String(),
+    ));
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -298,5 +377,130 @@ class _QuestCard extends StatelessWidget {
         ),
       );
     }
+  }
+
+  Future<void> _completeSideQuest(
+    BuildContext context,
+    Quest quest,
+    QuestProvider qp,
+    CharacterProvider cp,
+    SkillProvider sp,
+    JournalProvider jp,
+  ) async {
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('支线任务结算', style: TextStyle(color: EldenTheme.gold)),
+        content: Text(
+          '任务：${quest.title}\n\n请选择结果：',
+          style: const TextStyle(color: EldenTheme.textLight, height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('无收获（扣经验）')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('有收获（加经验）', style: TextStyle(color: EldenTheme.gold)),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+
+    // abnormal expReward => no effects
+    if (quest.expReward <= 0) {
+      await qp.setQuestCompleted(quest.id!);
+      await jp.upsert(QuestJournal(
+        questId: quest.id!,
+        logDate: today,
+        completed: true,
+        expDelta: 0,
+        reason: choice ? 'complete_success' : 'complete_no_harvest',
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+      return;
+    }
+
+    if (choice) {
+      // 有收获：总经验 +expReward；增益技能 +expReward
+      await cp.applyExpDelta(quest.expReward);
+      if (quest.targetSkillId != null) {
+        await sp.applyExpDeltaToSkill(quest.targetSkillId!, quest.expReward, propagateToParent: true);
+      }
+      await jp.upsert(QuestJournal(
+        questId: quest.id!,
+        logDate: today,
+        completed: true,
+        expDelta: quest.expReward,
+        reason: 'complete_success',
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+    } else {
+      // 无收获：总经验 -expReward*50%；惩罚技能 -expReward
+      final penalty = (quest.expReward * 0.5).round();
+      await cp.applyExpDelta(-penalty);
+      if (quest.lossSkillId != null) {
+        await sp.applyExpDeltaToSkill(quest.lossSkillId!, -quest.expReward);
+      }
+      await jp.upsert(QuestJournal(
+        questId: quest.id!,
+        logDate: today,
+        completed: true,
+        expDelta: -penalty,
+        reason: 'complete_no_harvest',
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+    }
+
+    await qp.setQuestCompleted(quest.id!);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: EldenTheme.bgCard,
+          content: Text(choice ? '支线完成：获得经验与技能成长' : '支线完成：无收获，已扣除经验/技能经验'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _editDescription(BuildContext context, Quest quest) {
+    final ctrl = TextEditingController(text: quest.description ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑任务描述', style: TextStyle(color: EldenTheme.gold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('任务：${quest.title}', style: const TextStyle(color: EldenTheme.textDim, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: EldenTheme.textLight),
+              decoration: const InputDecoration(labelText: '描述（可选）'),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              final text = ctrl.text.trim();
+              await context.read<QuestProvider>().updateQuestDescription(
+                    quest.id!,
+                    text.isEmpty ? null : text,
+                  );
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('保存', style: TextStyle(color: EldenTheme.gold)),
+          ),
+        ],
+      ),
+    );
   }
 }
