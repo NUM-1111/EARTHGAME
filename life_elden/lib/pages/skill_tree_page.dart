@@ -10,7 +10,18 @@ class SkillTreePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('技 能 树')),
+      appBar: AppBar(
+        title: const Text('技 能 树'),
+        actions: [
+          IconButton(
+            tooltip: '已归档',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ArchivedSkillPage()),
+            ),
+            icon: const Icon(Icons.archive),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddSkillDialog(context, null),
         child: const Icon(Icons.add),
@@ -126,6 +137,11 @@ class _SkillRootCardState extends State<_SkillRootCard> {
                     onPressed: () => _editDescription(context, widget.skill),
                     icon: Icon(Icons.edit_note, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
                   ),
+                  IconButton(
+                    tooltip: '归档',
+                    onPressed: () => _archiveSkill(context, widget.skill),
+                    icon: Icon(Icons.archive, size: 18, color: EldenTheme.textDim.withOpacity(0.8)),
+                  ),
                   _LevelBadge(level: widget.skill.level),
                 ],
               ),
@@ -227,6 +243,27 @@ class _SkillRootCardState extends State<_SkillRootCard> {
       ),
     );
   }
+
+  Future<void> _archiveSkill(BuildContext context, Skill skill) async {
+    final sp = context.read<SkillProvider>();
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('归档技能', style: TextStyle(color: EldenTheme.gold)),
+            content: Text('将「${skill.name}」移入已归档？', style: const TextStyle(color: EldenTheme.textLight)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('归档', style: TextStyle(color: EldenTheme.gold)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok) return;
+    await sp.archiveSkill(skill.id!);
+  }
 }
 
 class _SkillChildTile extends StatelessWidget {
@@ -266,6 +303,11 @@ class _SkillChildTile extends StatelessWidget {
                 tooltip: '编辑描述',
                 onPressed: () => _editDescription(context, skill),
                 icon: Icon(Icons.edit_note, size: 18, color: EldenTheme.textDim.withOpacity(0.8)),
+              ),
+              IconButton(
+                tooltip: '归档',
+                onPressed: () => _archiveSkill(context, skill),
+                icon: Icon(Icons.archive, size: 18, color: EldenTheme.textDim.withOpacity(0.8)),
               ),
               _LevelBadge(level: skill.level, small: true),
             ],
@@ -307,6 +349,83 @@ class _SkillChildTile extends StatelessWidget {
             child: const Text('保存', style: TextStyle(color: EldenTheme.gold)),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _archiveSkill(BuildContext context, Skill skill) async {
+    final sp = context.read<SkillProvider>();
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('归档技能', style: TextStyle(color: EldenTheme.gold)),
+            content: Text('将「${skill.name}」移入已归档？', style: const TextStyle(color: EldenTheme.textLight)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('归档', style: TextStyle(color: EldenTheme.gold)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok) return;
+    await sp.archiveSkill(skill.id!);
+  }
+}
+
+class ArchivedSkillPage extends StatelessWidget {
+  const ArchivedSkillPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('已归档技能')),
+      body: Consumer<SkillProvider>(
+        builder: (context, sp, _) {
+          final list = sp.archivedItems;
+          if (list.isEmpty) {
+            return const Center(
+              child: Text('暂无已归档技能', style: TextStyle(color: EldenTheme.textDim)),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: list.length,
+            itemBuilder: (context, i) => _ArchivedSkillTile(skill: list[i]),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ArchivedSkillTile extends StatelessWidget {
+  final Skill skill;
+  const _ArchivedSkillTile({required this.skill});
+
+  @override
+  Widget build(BuildContext context) {
+    final sp = context.read<SkillProvider>();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: EldenTheme.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: EldenTheme.gold.withOpacity(0.25)),
+      ),
+      child: ListTile(
+        title: Text(skill.name, style: const TextStyle(color: EldenTheme.textLight)),
+        subtitle: Text(
+          skill.parentId == null ? '根技能' : '子技能（parentId=${skill.parentId}）',
+          style: const TextStyle(color: EldenTheme.textDim, fontSize: 11),
+        ),
+        trailing: TextButton.icon(
+          onPressed: () => sp.restoreSkill(skill.id!),
+          icon: const Icon(Icons.unarchive, size: 18),
+          label: const Text('恢复'),
+        ),
       ),
     );
   }

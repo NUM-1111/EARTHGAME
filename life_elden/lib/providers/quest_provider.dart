@@ -8,18 +8,55 @@ import 'character_provider.dart';
 import 'journal_provider.dart';
 import '../models/quest_journal.dart';
 
+class DebuffApplyResult {
+  final int dailyMissDays;
+  final int sideOverdueDays;
+  final int dailyExpDelta; // negative or 0
+  final int sideExpDelta; // negative or 0
+
+  const DebuffApplyResult({
+    this.dailyMissDays = 0,
+    this.sideOverdueDays = 0,
+    this.dailyExpDelta = 0,
+    this.sideExpDelta = 0,
+  });
+
+  int get totalExpDelta => dailyExpDelta + sideExpDelta;
+
+  bool get hasAny => dailyMissDays > 0 || sideOverdueDays > 0 || totalExpDelta != 0;
+  bool get hasSideOverdue => sideOverdueDays > 0;
+
+  DebuffApplyResult merge(DebuffApplyResult other) => DebuffApplyResult(
+        dailyMissDays: dailyMissDays + other.dailyMissDays,
+        sideOverdueDays: sideOverdueDays + other.sideOverdueDays,
+        dailyExpDelta: dailyExpDelta + other.dailyExpDelta,
+        sideExpDelta: sideExpDelta + other.sideExpDelta,
+      );
+}
+
 class QuestProvider extends ChangeNotifier {
   final _db = DatabaseHelper.instance;
   final _webStore = WebSeedStore.instance;
   List<Quest> quests = [];
   List<StreakLog> streakLogs = [];
+  Future<void>? _loadFuture;
 
-  List<Quest> get mainQuests => quests.where((q) => q.type == 'main').toList();
-  List<Quest> get sideQuests => quests.where((q) => q.type == 'side').toList();
-  List<Quest> get dailyQuests => quests.where((q) => q.type == 'daily').toList();
-  List<Quest> get activeQuests => quests.where((q) => q.status == 'active').toList();
+  List<Quest> get activeItems => quests.where((q) => !q.isArchived).toList();
+  List<Quest> get archivedItems => quests.where((q) => q.isArchived).toList();
 
-  Future<void> load() async {
+  List<Quest> get mainQuests => activeItems.where((q) => q.type == 'main').toList();
+  List<Quest> get sideQuests => activeItems.where((q) => q.type == 'side').toList();
+  List<Quest> get dailyQuests => activeItems.where((q) => q.type == 'daily').toList();
+  List<Quest> get activeQuests => activeItems.where((q) => q.status == 'active').toList();
+
+  Future<void> load() {
+    _loadFuture ??= _loadInternal();
+    return _loadFuture!;
+  }
+
+  Future<void> ensureLoaded() => load();
+
+  Future<void> _loadInternal() async {
     if (kIsWeb) {
       _webStore.ensureInit();
       quests = _webStore.quests.map((q) => q).toList();
@@ -157,40 +194,76 @@ class QuestProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> applyPendingDebuffs(CharacterProvider cp, JournalProvider jp) async {
+  Future<void> archiveQuest(int questId) async {
+    final idx = quests.indexWhere((q) => q.id == questId);
+    if (idx == -1) return;
+    final now = DateTime.now().toIso8601String();
+    final updated = quests[idx].copyWith(isArchived: true, archivedAt: now);
+    quests[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
+    }
+    if (kIsWeb) {
+      _webStore.quests = quests.map((q) => q).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> restoreQuest(int questId) async {
+    final idx = quests.indexWhere((q) => q.id == questId);
+    if (idx == -1) return;
+    final updated = quests[idx].copyWith(isArchived: false, archivedAt: '');
+    quests[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
+    }
+    if (kIsWeb) {
+      _webStore.quests = quests.map((q) => q).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<DebuffApplyResult> applyPendingDebuffs(CharacterProvider cp, JournalProvider jp) async {
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().substring(0, 10);
 
     await jp.pruneOlderThanDays(30);
 
+    DebuffApplyResult result = const DebuffApplyResult();
     for (final quest in quests) {
+      if (quest.isArchived) continue;
       if (quest.status != 'active') continue;
       if (!quest.debuffEnabled) continue;
       if (quest.expReward <= 0) continue; // safety: abnormal tasks do nothing
 
       if (quest.type == 'daily') {
-        await _applyDailyDebuff(quest, cp, jp, today: today, yesterday: yesterday);
+        result = result.merge(await _applyDailyDebuff(quest, cp, jp, today: today, yesterday: yesterday));
       }
       if (quest.type == 'side') {
-        await _applySideOverdueDebuff(quest, cp, jp, today: today, yesterday: yesterday);
+        result = result.merge(await _applySideOverdueDebuff(quest, cp, jp, today: today, yesterday: yesterday));
       }
     }
+    return result;
   }
 
-  Future<void> _applyDailyDebuff(Quest quest, CharacterProvider cp, JournalProvider jp, {required String today, required String yesterday}) async {
+  Future<DebuffApplyResult> _applyDailyDebuff(Quest quest, CharacterProvider cp, JournalProvider jp, {required String today, required String yesterday}) async {
     final streak = streakFor(quest.id ?? -1);
-    if (streak == null) return;
+    if (streak == null) return const DebuffApplyResult();
 
     // If never completed, do not retroactively penalize.
     final lastCompleted = streak.lastCompletedDate.isEmpty ? today : streak.lastCompletedDate;
     final lastApplied = streak.lastDebuffAppliedDate.isEmpty ? lastCompleted : streak.lastDebuffAppliedDate;
 
     String cursor = _addDays(_maxDate(lastCompleted, lastApplied), 1);
-    if (cursor.compareTo(yesterday) > 0) return;
+    if (cursor.compareTo(yesterday) > 0) return const DebuffApplyResult();
 
+    int missDays = 0;
+    int totalDelta = 0;
     while (cursor.compareTo(yesterday) <= 0) {
       final penalty = (quest.expReward * 0.5).round();
       await cp.applyExpDelta(-penalty);
+      missDays++;
+      totalDelta -= penalty;
       await jp.upsert(QuestJournal(
         questId: quest.id!,
         logDate: cursor,
@@ -212,26 +285,31 @@ class QuestProvider extends ChangeNotifier {
       _webStore.streakLogs = streakLogs.map((s) => s).toList();
     }
     notifyListeners();
+    return DebuffApplyResult(dailyMissDays: missDays, dailyExpDelta: totalDelta);
   }
 
-  Future<void> _applySideOverdueDebuff(Quest quest, CharacterProvider cp, JournalProvider jp, {required String today, required String yesterday}) async {
-    if (quest.debuffDueDays == null) return;
+  Future<DebuffApplyResult> _applySideOverdueDebuff(Quest quest, CharacterProvider cp, JournalProvider jp, {required String today, required String yesterday}) async {
+    if (quest.debuffDueDays == null) return const DebuffApplyResult();
     final created = quest.createdDate.isEmpty ? today : quest.createdDate;
     final due = _addDays(created, quest.debuffDueDays!);
 
     // Only overdue days count.
-    if (yesterday.compareTo(due) < 0) return;
+    if (yesterday.compareTo(due) < 0) return const DebuffApplyResult();
 
     final lastApplied = quest.lastDebuffAppliedDate.isEmpty ? _addDays(due, -1) : quest.lastDebuffAppliedDate;
     String cursor = _addDays(lastApplied, 1);
     if (cursor.compareTo(due) < 0) cursor = due;
 
-    if (cursor.compareTo(yesterday) > 0) return;
+    if (cursor.compareTo(yesterday) > 0) return const DebuffApplyResult();
 
     String lastDid = '';
+    int overdueDays = 0;
+    int totalDelta = 0;
     while (cursor.compareTo(yesterday) <= 0) {
       final penalty = (quest.expReward * 0.5).round();
       await cp.applyExpDelta(-penalty);
+      overdueDays++;
+      totalDelta -= penalty;
       await jp.upsert(QuestJournal(
         questId: quest.id!,
         logDate: cursor,
@@ -244,8 +322,9 @@ class QuestProvider extends ChangeNotifier {
       cursor = _addDays(cursor, 1);
     }
 
-    if (lastDid.isEmpty) return;
+    if (lastDid.isEmpty) return const DebuffApplyResult();
     await _updateQuestDebuffAppliedDate(quest.id!, lastDid);
+    return DebuffApplyResult(sideOverdueDays: overdueDays, sideExpDelta: totalDelta);
   }
 
   Future<void> _updateQuestDebuffAppliedDate(int questId, String date) async {

@@ -9,10 +9,13 @@ class SkillProvider extends ChangeNotifier {
   final _webStore = WebSeedStore.instance;
   List<Skill> skills = [];
 
-  List<Skill> get roots => skills.where((s) => s.parentId == null).toList();
+  List<Skill> get activeItems => skills.where((s) => !s.isArchived).toList();
+  List<Skill> get archivedItems => skills.where((s) => s.isArchived).toList();
+
+  List<Skill> get roots => activeItems.where((s) => s.parentId == null).toList();
 
   List<Skill> childrenOf(int parentId) =>
-      skills.where((s) => s.parentId == parentId).toList();
+      activeItems.where((s) => s.parentId == parentId).toList();
 
   Skill? byId(int id) {
     try {
@@ -132,6 +135,35 @@ class SkillProvider extends ChangeNotifier {
     final idx = skills.indexWhere((s) => s.id == id);
     if (idx == -1) return;
     final updated = skills[idx].copyWith(description: description);
+    skills[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('skills', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+    }
+    if (kIsWeb) {
+      _webStore.skills = skills.map((s) => s).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> archiveSkill(int id) async {
+    final idx = skills.indexWhere((s) => s.id == id);
+    if (idx == -1) return;
+    final now = DateTime.now().toIso8601String();
+    final updated = skills[idx].copyWith(isArchived: true, archivedAt: now);
+    skills[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('skills', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+    }
+    if (kIsWeb) {
+      _webStore.skills = skills.map((s) => s).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> restoreSkill(int id) async {
+    final idx = skills.indexWhere((s) => s.id == id);
+    if (idx == -1) return;
+    final updated = skills[idx].copyWith(isArchived: false, archivedAt: '');
     skills[idx] = updated;
     if (!kIsWeb) {
       await _db.update('skills', updated.toMap(), where: 'id = ?', whereArgs: [id]);

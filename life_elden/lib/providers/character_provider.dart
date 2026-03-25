@@ -6,6 +6,7 @@ import '../database/web_seed_store.dart';
 class CharacterProvider extends ChangeNotifier {
   final _db = DatabaseHelper.instance;
   final _webStore = WebSeedStore.instance;
+  Future<void>? _loadFuture;
 
   String name = 'Jiang Yiwu';
   int totalLevel = 1;
@@ -31,7 +32,14 @@ class CharacterProvider extends ChangeNotifier {
     return 'tarnished';
   }
 
-  Future<void> load() async {
+  Future<void> load() {
+    _loadFuture ??= _loadInternal();
+    return _loadFuture!;
+  }
+
+  Future<void> ensureLoaded() => load();
+
+  Future<void> _loadInternal() async {
     if (kIsWeb) {
       _webStore.ensureInit();
       name = _webStore.name;

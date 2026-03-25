@@ -8,7 +8,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   Database? _db;
-  static const int _dbVersion = 2;
+  static const int _dbVersion = 3;
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -52,6 +52,8 @@ class DatabaseHelper {
         description TEXT NOT NULL DEFAULT '',
         current_exp INTEGER NOT NULL DEFAULT 0,
         level INTEGER NOT NULL DEFAULT 1,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        archived_at TEXT,
         FOREIGN KEY (parent_id) REFERENCES skills(id)
       )
     ''');
@@ -63,7 +65,9 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         rarity TEXT NOT NULL DEFAULT 'Common',
         buff_description TEXT NOT NULL DEFAULT '',
-        is_equipped INTEGER NOT NULL DEFAULT 0
+        is_equipped INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        archived_at TEXT
       )
     ''');
 
@@ -83,6 +87,8 @@ class DatabaseHelper {
         debuff_enabled INTEGER NOT NULL DEFAULT 0,
         debuff_due_days INTEGER,
         last_debuff_applied_date TEXT NOT NULL DEFAULT '',
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        archived_at TEXT,
         FOREIGN KEY (target_skill_id) REFERENCES skills(id)
       )
     ''');
@@ -147,6 +153,18 @@ class DatabaseHelper {
           UNIQUE(quest_id, log_date)
         )
       ''');
+    }
+
+    if (oldVersion < 3) {
+      // soft-delete (archive) flags
+      await db.execute('ALTER TABLE skills ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE skills ADD COLUMN archived_at TEXT');
+
+      await db.execute('ALTER TABLE equipment ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE equipment ADD COLUMN archived_at TEXT');
+
+      await db.execute('ALTER TABLE quests ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE quests ADD COLUMN archived_at TEXT');
     }
   }
 

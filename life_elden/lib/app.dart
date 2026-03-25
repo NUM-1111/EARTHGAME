@@ -52,7 +52,35 @@ class _MainShellState extends State<MainShell> {
       final qp = context.read<QuestProvider>();
       final cp = context.read<CharacterProvider>();
       final jp = context.read<JournalProvider>();
-      await qp.applyPendingDebuffs(cp, jp);
+      await qp.ensureLoaded();
+      await cp.ensureLoaded();
+      final r = await qp.applyPendingDebuffs(cp, jp);
+      if (mounted && r.hasSideOverdue) {
+        final loss = -r.sideExpDelta;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: EldenTheme.bgCard,
+            content: Row(
+              children: [
+                const Icon(Icons.warning_amber, color: EldenTheme.gold, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '支线任务逾期：累计 ${r.sideOverdueDays} 天，扣除 $loss EXP',
+                    style: const TextStyle(color: EldenTheme.textLight),
+                  ),
+                ),
+              ],
+            ),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: EldenTheme.gold.withOpacity(0.25)),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
       await jp.loadLastDays(30);
     });
   }

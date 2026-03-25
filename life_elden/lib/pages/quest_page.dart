@@ -18,6 +18,15 @@ class QuestPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('任 务'),
+          actions: [
+            IconButton(
+              tooltip: '已归档',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ArchivedQuestPage()),
+              ),
+              icon: const Icon(Icons.archive),
+            ),
+          ],
           bottom: TabBar(
             indicatorColor: EldenTheme.gold,
             labelColor: EldenTheme.gold,
@@ -229,7 +238,7 @@ class _QuestCard extends StatelessWidget {
     final qp = context.read<QuestProvider>();
     final streak = qp.streakFor(quest.id ?? -1);
 
-    return Container(
+    final card = Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: isCompleted ? EldenTheme.bgDark.withOpacity(0.5) : EldenTheme.bgCard,
@@ -321,6 +330,39 @@ class _QuestCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+
+    return Dismissible(
+      key: ValueKey('quest-${quest.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: EldenTheme.red.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.archive, color: EldenTheme.red),
+      ),
+      confirmDismiss: (_) async {
+        return await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('归档任务', style: TextStyle(color: EldenTheme.gold)),
+                content: Text('将「${quest.title}」移入已归档？', style: const TextStyle(color: EldenTheme.textLight)),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('归档', style: TextStyle(color: EldenTheme.gold)),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+      },
+      onDismissed: (_) => qp.archiveQuest(quest.id!),
+      child: card,
     );
   }
 
@@ -500,6 +542,63 @@ class _QuestCard extends StatelessWidget {
             child: const Text('保存', style: TextStyle(color: EldenTheme.gold)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class ArchivedQuestPage extends StatelessWidget {
+  const ArchivedQuestPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('已归档任务')),
+      body: Consumer<QuestProvider>(
+        builder: (context, qp, _) {
+          final list = qp.archivedItems;
+          if (list.isEmpty) {
+            return const Center(
+              child: Text('暂无已归档任务', style: TextStyle(color: EldenTheme.textDim)),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: list.length,
+            itemBuilder: (context, i) => _ArchivedQuestTile(quest: list[i]),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ArchivedQuestTile extends StatelessWidget {
+  final Quest quest;
+  const _ArchivedQuestTile({required this.quest});
+
+  @override
+  Widget build(BuildContext context) {
+    final qp = context.read<QuestProvider>();
+    final color = EldenTheme.questTypeColor(quest.type);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: EldenTheme.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: ListTile(
+        title: Text(quest.title, style: const TextStyle(color: EldenTheme.textLight)),
+        subtitle: Text(
+          '${EldenTheme.questTypeLabel(quest.type)}  ·  ${quest.status == 'completed' ? '已完成' : '进行中'}',
+          style: const TextStyle(color: EldenTheme.textDim, fontSize: 11),
+        ),
+        trailing: TextButton.icon(
+          onPressed: () => qp.restoreQuest(quest.id!),
+          icon: const Icon(Icons.unarchive, size: 18),
+          label: const Text('恢复'),
+        ),
       ),
     );
   }

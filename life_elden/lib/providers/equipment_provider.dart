@@ -9,7 +9,9 @@ class EquipmentProvider extends ChangeNotifier {
   final _webStore = WebSeedStore.instance;
   List<Equipment> items = [];
 
-  List<Equipment> get equipped => items.where((e) => e.isEquipped).toList();
+  List<Equipment> get activeItems => items.where((e) => !e.isArchived).toList();
+  List<Equipment> get archivedItems => items.where((e) => e.isArchived).toList();
+  List<Equipment> get equipped => activeItems.where((e) => e.isEquipped).toList();
 
   Future<void> load() async {
     if (kIsWeb) {
@@ -42,6 +44,7 @@ class EquipmentProvider extends ChangeNotifier {
     final idx = items.indexWhere((e) => e.id == id);
     if (idx == -1) return;
     final eq = items[idx];
+    if (eq.isArchived) return;
     final updated = eq.copyWith(isEquipped: !eq.isEquipped);
     items[idx] = updated;
     if (!kIsWeb) {
@@ -53,7 +56,36 @@ class EquipmentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteEquipment(int id) async {
+  Future<void> archiveEquipment(int id) async {
+    final idx = items.indexWhere((e) => e.id == id);
+    if (idx == -1) return;
+    final now = DateTime.now().toIso8601String();
+    final updated = items[idx].copyWith(isArchived: true, archivedAt: now, isEquipped: false);
+    items[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('equipment', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+    }
+    if (kIsWeb) {
+      _webStore.equipment = items.map((e) => e).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> restoreEquipment(int id) async {
+    final idx = items.indexWhere((e) => e.id == id);
+    if (idx == -1) return;
+    final updated = items[idx].copyWith(isArchived: false, archivedAt: '');
+    items[idx] = updated;
+    if (!kIsWeb) {
+      await _db.update('equipment', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+    }
+    if (kIsWeb) {
+      _webStore.equipment = items.map((e) => e).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> purgeEquipment(int id) async {
     items.removeWhere((e) => e.id == id);
     if (!kIsWeb) {
       await _db.delete('equipment', where: 'id = ?', whereArgs: [id]);

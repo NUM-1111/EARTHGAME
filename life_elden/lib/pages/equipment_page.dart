@@ -4,28 +4,51 @@ import '../theme/elden_theme.dart';
 import '../providers/equipment_provider.dart';
 import '../models/equipment.dart';
 
-class EquipmentPage extends StatelessWidget {
+class EquipmentPage extends StatefulWidget {
   const EquipmentPage({super.key});
+
+  @override
+  State<EquipmentPage> createState() => _EquipmentPageState();
+}
+
+class _EquipmentPageState extends State<EquipmentPage> {
+  bool _showArchived = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('装 备 库')),
+      appBar: AppBar(
+        title: Text(_showArchived ? '装 备 库（已归档）' : '装 备 库'),
+        actions: [
+          IconButton(
+            tooltip: _showArchived ? '返回背包' : '查看已归档',
+            onPressed: () => setState(() => _showArchived = !_showArchived),
+            icon: Icon(_showArchived ? Icons.inventory_2 : Icons.archive),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddDialog(context),
+        onPressed: _showArchived ? null : () => _showAddDialog(context),
         child: const Icon(Icons.add),
       ),
       body: Consumer<EquipmentProvider>(
         builder: (context, ep, _) {
-          if (ep.items.isEmpty) {
-            return const Center(
-              child: Text('背包空空如也，点击 + 录入资源', style: TextStyle(color: EldenTheme.textDim)),
+          final list = _showArchived ? ep.archivedItems : ep.activeItems;
+          if (list.isEmpty) {
+            return Center(
+              child: Text(
+                _showArchived ? '暂无已归档装备' : '背包空空如也，点击 + 录入资源',
+                style: const TextStyle(color: EldenTheme.textDim),
+              ),
             );
           }
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: ep.items.length,
-            itemBuilder: (context, i) => _EquipmentCard(equipment: ep.items[i]),
+            itemCount: list.length,
+            itemBuilder: (context, i) => _EquipmentCard(
+              equipment: list[i],
+              archivedMode: _showArchived,
+            ),
           );
         },
       ),
@@ -101,7 +124,8 @@ class EquipmentPage extends StatelessWidget {
 
 class _EquipmentCard extends StatelessWidget {
   final Equipment equipment;
-  const _EquipmentCard({required this.equipment});
+  final bool archivedMode;
+  const _EquipmentCard({required this.equipment, required this.archivedMode});
 
   String _rarityLabel(String rarity) {
     switch (rarity) {
@@ -134,20 +158,7 @@ class _EquipmentCard extends StatelessWidget {
     final color = EldenTheme.rarityColor(equipment.rarity);
     final ep = context.read<EquipmentProvider>();
 
-    return Dismissible(
-      key: ValueKey(equipment.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        decoration: BoxDecoration(
-          color: EldenTheme.red.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.delete, color: EldenTheme.red),
-      ),
-      onDismissed: (_) => ep.deleteEquipment(equipment.id!),
-      child: Container(
+    final card = Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: EldenTheme.bgCard,
@@ -158,7 +169,7 @@ class _EquipmentCard extends StatelessWidget {
           ],
         ),
         child: InkWell(
-          onTap: () => ep.toggleEquip(equipment.id!),
+          onTap: archivedMode ? null : () => ep.toggleEquip(equipment.id!),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -177,9 +188,15 @@ class _EquipmentCard extends StatelessWidget {
                     ),
                     IconButton(
                       tooltip: '编辑描述',
-                      onPressed: () => _editBuffDescription(context, equipment),
+                      onPressed: archivedMode ? null : () => _editBuffDescription(context, equipment),
                       icon: Icon(Icons.edit_note, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
                     ),
+                    if (archivedMode)
+                      IconButton(
+                        tooltip: '恢复',
+                        onPressed: () => ep.restoreEquipment(equipment.id!),
+                        icon: const Icon(Icons.unarchive, size: 20, color: EldenTheme.gold),
+                      ),
                     // Rarity badge
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -233,7 +250,41 @@ class _EquipmentCard extends StatelessWidget {
             ),
           ),
         ),
+    );
+
+    if (archivedMode) return card;
+
+    return Dismissible(
+      key: ValueKey(equipment.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: EldenTheme.red.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.delete, color: EldenTheme.red),
       ),
+      confirmDismiss: (_) async {
+        return await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('归档装备', style: TextStyle(color: EldenTheme.gold)),
+                content: Text('将「${equipment.name}」移入已归档？', style: const TextStyle(color: EldenTheme.textLight)),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('归档', style: TextStyle(color: EldenTheme.gold)),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+      },
+      onDismissed: (_) => ep.archiveEquipment(equipment.id!),
+      child: card,
     );
   }
 

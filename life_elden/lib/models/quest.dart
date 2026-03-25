@@ -12,6 +12,8 @@ class Quest {
   final bool debuffEnabled;
   final int? debuffDueDays; // side: due in N days from created
   final String lastDebuffAppliedDate; // YYYY-MM-DD or ''
+  final bool isArchived;
+  final String archivedAt; // ISO8601 or ''
 
   Quest({
     this.id,
@@ -27,6 +29,8 @@ class Quest {
     this.debuffEnabled = false,
     this.debuffDueDays,
     this.lastDebuffAppliedDate = '',
+    this.isArchived = false,
+    this.archivedAt = '',
   });
 
   Map<String, dynamic> toMap() => {
@@ -43,6 +47,8 @@ class Quest {
         'debuff_enabled': debuffEnabled ? 1 : 0,
         'debuff_due_days': debuffDueDays,
         'last_debuff_applied_date': lastDebuffAppliedDate,
+        'is_archived': isArchived ? 1 : 0,
+        'archived_at': archivedAt.isEmpty ? null : archivedAt,
       };
 
   factory Quest.fromMap(Map<String, dynamic> m) => Quest(
@@ -59,6 +65,8 @@ class Quest {
         debuffEnabled: (m['debuff_enabled'] as int? ?? 0) == 1,
         debuffDueDays: m['debuff_due_days'] as int?,
         lastDebuffAppliedDate: m['last_debuff_applied_date'] as String? ?? '',
+        isArchived: (m['is_archived'] as int? ?? 0) == 1,
+        archivedAt: m['archived_at'] as String? ?? '',
       );
 
   Quest copyWith({
@@ -75,6 +83,8 @@ class Quest {
     bool? debuffEnabled,
     int? debuffDueDays,
     String? lastDebuffAppliedDate,
+    bool? isArchived,
+    String? archivedAt,
   }) => Quest(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -89,5 +99,7 @@ class Quest {
         debuffEnabled: debuffEnabled ?? this.debuffEnabled,
         debuffDueDays: debuffDueDays ?? this.debuffDueDays,
         lastDebuffAppliedDate: lastDebuffAppliedDate ?? this.lastDebuffAppliedDate,
+        isArchived: isArchived ?? this.isArchived,
+        archivedAt: archivedAt ?? this.archivedAt,
       );
 }
