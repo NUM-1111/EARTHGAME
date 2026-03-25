@@ -91,6 +91,10 @@ class _SkillRootCardState extends State<_SkillRootCard> {
   Widget build(BuildContext context) {
     final sp = context.watch<SkillProvider>();
     final children = sp.childrenOf(widget.skill.id!);
+    final subtreeIds = sp.collectDescendantSkillIdsForUi(widget.skill.id!);
+    final archivedDescCount = sp.skills
+        .where((s) => s.id != null && s.id != widget.skill.id && s.isArchived && subtreeIds.contains(s.id))
+        .length;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -154,6 +158,22 @@ class _SkillRootCardState extends State<_SkillRootCard> {
             child: _SkillExpBar(skill: widget.skill),
           ),
           // Children
+          if (_expanded && archivedDescCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, right: 16, bottom: 6, top: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.archive, size: 14, color: EldenTheme.textDim.withOpacity(0.8)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '已归档子技能 $archivedDescCount 个（去右上角「已归档」查看）',
+                      style: TextStyle(color: EldenTheme.textDim.withOpacity(0.85), fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_expanded && children.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: 24, right: 16, bottom: 12, top: 8),
@@ -416,6 +436,7 @@ class _ArchivedSkillTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final sp = context.read<SkillProvider>();
     final qp = context.read<QuestProvider>();
+    final parentName = skill.parentId == null ? null : sp.byId(skill.parentId!)?.name;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -426,7 +447,7 @@ class _ArchivedSkillTile extends StatelessWidget {
       child: ListTile(
         title: Text(skill.name, style: const TextStyle(color: EldenTheme.textLight)),
         subtitle: Text(
-          skill.parentId == null ? '根技能' : '子技能（parentId=${skill.parentId}）',
+          skill.parentId == null ? '根技能' : '子技能（父技能：${parentName ?? '已删除/不可用'}）',
           style: const TextStyle(color: EldenTheme.textDim, fontSize: 11),
         ),
         trailing: Row(
@@ -467,7 +488,9 @@ class _ArchivedSkillTile extends StatelessWidget {
                     false;
                 if (!ok) return;
 
-                final deleted = await sp.purgeSkill(skill.id!);
+                final deleted = skill.parentId == null
+                    ? await sp.purgeSkillCascade(skill.id!)
+                    : await sp.purgeSkill(skill.id!);
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -482,7 +505,9 @@ class _ArchivedSkillTile extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            deleted ? '技能已彻底删除' : '该技能被任务引用，无法删除。请先解除任务关联或删除相关任务。',
+                            deleted
+                                ? (skill.parentId == null ? '根技能与其子技能已彻底删除' : '技能已彻底删除')
+                                : '根或子技能被任务引用，无法删除。请先解除任务关联或删除相关任务。',
                             style: const TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600),
                           ),
                         ),

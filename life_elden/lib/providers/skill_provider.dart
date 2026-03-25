@@ -159,7 +159,7 @@ class SkillProvider extends ChangeNotifier {
       skills[i] = s.copyWith(isArchived: true, archivedAt: now);
       changed = true;
     }
-    if (!changed) return;
+    if (!changed) return false;
 
     if (!kIsWeb) {
       for (final sid in ids) {
@@ -175,12 +175,29 @@ class SkillProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> restoreSkill(int id) async {
+  Future<bool> restoreSkill(int id) async {
     final idx = skills.indexWhere((s) => s.id == id);
-    if (idx == -1) return;
+    if (idx == -1) return false;
 
     // Restore root skill should restore its whole subtree (because root archive is cascade).
     final restoring = skills[idx];
+
+    // Safety rule: cannot restore a child if ANY ancestor is still archived.
+    //
+    // If parent is missing/deleted, allow restoring (and UI will show parent missing).
+    if (restoring.parentId != null) {
+      final visited = <int>{};
+      var cursor = restoring.parentId;
+      while (cursor != null) {
+        if (visited.contains(cursor)) break; // guard against malformed cycles
+        visited.add(cursor);
+        final p = byId(cursor);
+        if (p == null) break;
+        if (p.isArchived) return false;
+        cursor = p.parentId;
+      }
+    }
+
     final shouldRestoreSubtree = restoring.parentId == null;
     final ids = shouldRestoreSubtree ? _collectDescendantSkillIds(id) : <int>{id};
 
@@ -218,6 +235,7 @@ class SkillProvider extends ChangeNotifier {
       _webStore.skills = skills.map((s) => s).toList();
     }
     notifyListeners();
+    return true;
   }
 
   Set<int> _collectDescendantSkillIds(int rootId) {
@@ -244,6 +262,55 @@ class SkillProvider extends ChangeNotifier {
 
   // Expose for UI to coordinate quest archiving without duplicating logic.
   Set<int> collectDescendantSkillIdsForUi(int rootId) => _collectDescendantSkillIds(rootId);
+
+  /// Downgrade rule: purge a root skill and all its descendants together.
+  ///
+  /// Safety rule:
+  /// - If ANY quest references ANY skill in the subtree as `target_skill_id` or `loss_skill_id`,
+  ///   return `false` and do not delete anything.
+  Future<bool> purgeSkillCascade(int rootSkillId) async {
+    final subtreeIds = _collectDescendantSkillIds(rootSkillId);
+    if (subtreeIds.isEmpty) return false;
+
+    // Only allow cascade purge for roots (parentId == null)
+    final root = byId(rootSkillId);
+    if (root == null || root.parentId != null) return false;
+
+    if (kIsWeb) {
+      final usedByQuest = _webStore.quests.any((q) {
+        final t = q.targetSkillId;
+        final l = q.lossSkillId;
+        return (t != null && subtreeIds.contains(t)) || (l != null && subtreeIds.contains(l));
+      });
+      if (usedByQuest) return false;
+
+      skills.removeWhere((s) => s.id != null && subtreeIds.contains(s.id));
+      _webStore.skills = skills.map((s) => s).toList();
+      notifyListeners();
+      return true;
+    }
+
+    final db = await _db.database;
+    final placeholders = List.filled(subtreeIds.length, '?').join(',');
+    final args = subtreeIds.toList();
+    final ref = await db.rawQuery(
+      '''
+SELECT id FROM quests
+WHERE (target_skill_id IN ($placeholders)) OR (loss_skill_id IN ($placeholders))
+LIMIT 1
+''',
+      [...args, ...args],
+    );
+    if (ref.isNotEmpty) return false;
+
+    await db.rawDelete(
+      'DELETE FROM skills WHERE id IN ($placeholders)',
+      args,
+    );
+    skills.removeWhere((s) => s.id != null && subtreeIds.contains(s.id));
+    notifyListeners();
+    return true;
+  }
 
   /// Completely delete a skill.
   ///
