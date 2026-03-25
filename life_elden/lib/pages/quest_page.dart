@@ -613,8 +613,23 @@ class _ArchivedQuestTile extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     backgroundColor: EldenTheme.bgCard,
-                    content: const Text('任务已彻底删除'),
+                    content: const Row(
+                      children: [
+                        Icon(Icons.check_circle_outline, color: EldenTheme.green, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '任务已彻底删除',
+                            style: TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
                     behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: EldenTheme.gold.withOpacity(0.3)),
+                    ),
                   ),
                 );
               },

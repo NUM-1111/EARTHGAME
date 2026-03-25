@@ -221,7 +221,26 @@ class _EquipmentCard extends StatelessWidget {
                               ) ??
                               false;
                           if (!ok) return;
-                          ep.purgeEquipment(equipment.id!);
+                          await ep.purgeEquipment(equipment.id!);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: EldenTheme.bgCard,
+                              content: const Row(
+                                children: [
+                                  Icon(Icons.check_circle_outline, color: EldenTheme.green, size: 18),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '装备已彻底删除',
+                                      style: TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
                         },
                         icon: Icon(Icons.delete_forever, size: 20, color: EldenTheme.red.withOpacity(0.9)),
                       ),

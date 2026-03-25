@@ -458,10 +458,27 @@ class _ArchivedSkillTile extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     backgroundColor: EldenTheme.bgCard,
-                    content: Text(
-                      deleted ? '技能已彻底删除' : '该技能被任务引用，已阻止彻底删除',
+                    content: Row(
+                      children: [
+                        Icon(
+                          deleted ? Icons.check_circle_outline : Icons.link_off,
+                          color: deleted ? EldenTheme.green : EldenTheme.gold,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            deleted ? '技能已彻底删除' : '该技能被任务引用，无法删除。请先解除任务关联或删除相关任务。',
+                            style: const TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
                     ),
                     behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: EldenTheme.gold.withOpacity(0.3)),
+                    ),
                   ),
                 );
               },
