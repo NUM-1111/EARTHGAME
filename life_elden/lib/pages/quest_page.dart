@@ -19,13 +19,12 @@ class QuestPage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('任 务'),
           actions: [
-            TextButton.icon(
+            IconButton(
+              tooltip: '已归档任务',
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ArchivedQuestPage()),
               ),
-              icon: const Icon(Icons.archive, size: 20),
-              label: const Text('已归档任务'),
-              style: TextButton.styleFrom(foregroundColor: EldenTheme.gold),
+              icon: const Icon(Icons.archive),
             ),
           ],
           bottom: TabBar(
@@ -279,29 +278,6 @@ class _QuestCard extends StatelessWidget {
                 ],
                 const Spacer(),
                 IconButton(
-                  tooltip: '删除（归档）',
-                  onPressed: () async {
-                    final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('归档任务', style: TextStyle(color: EldenTheme.gold)),
-                            content: Text('将「${quest.title}」移入已归档？', style: const TextStyle(color: EldenTheme.textLight)),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('归档', style: TextStyle(color: EldenTheme.gold)),
-                              ),
-                            ],
-                          ),
-                        ) ??
-                        false;
-                    if (!ok) return;
-                    qp.archiveQuest(quest.id!);
-                  },
-                  icon: Icon(Icons.delete_outline, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
-                ),
-                IconButton(
                   tooltip: '编辑描述',
                   onPressed: () => _editDescription(context, quest),
                   icon: Icon(Icons.edit_note, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
@@ -397,7 +373,33 @@ class _QuestCard extends StatelessWidget {
     final jp = context.read<JournalProvider>();
 
     if (quest.type == 'side') {
-      await _completeSideQuest(context, quest, qp, cp, sp, jp);
+      // Side quests: same as others (no judgement dialog).
+      final reward = await qp.completeQuest(quest.id!);
+      await cp.addExp(reward);
+      if (quest.targetSkillId != null) {
+        await sp.addExpToSkill(quest.targetSkillId!, reward);
+      }
+      await jp.upsert(QuestJournal(
+        questId: quest.id!,
+        logDate: DateTime.now().toIso8601String().substring(0, 10),
+        completed: true,
+        expDelta: reward,
+        reason: 'complete',
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: EldenTheme.bgCard,
+            content: Text(
+              '支线完成：获得 $reward 经验！',
+              style: const TextStyle(color: EldenTheme.textLight),
+            ),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
       return;
     }
 
@@ -440,96 +442,6 @@ class _QuestCard extends StatelessWidget {
             side: BorderSide(color: EldenTheme.gold.withOpacity(0.3)),
           ),
           duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  Future<void> _completeSideQuest(
-    BuildContext context,
-    Quest quest,
-    QuestProvider qp,
-    CharacterProvider cp,
-    SkillProvider sp,
-    JournalProvider jp,
-  ) async {
-    final choice = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('支线任务结算', style: TextStyle(color: EldenTheme.gold)),
-        content: Text(
-          '任务：${quest.title}\n\n请选择结果：',
-          style: const TextStyle(color: EldenTheme.textLight, height: 1.4),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('无收获（扣经验）')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('有收获（加经验）', style: TextStyle(color: EldenTheme.gold)),
-          ),
-        ],
-      ),
-    );
-    if (choice == null) return;
-
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-
-    // abnormal expReward => no effects
-    if (quest.expReward <= 0) {
-      await qp.setQuestCompleted(quest.id!);
-      await jp.upsert(QuestJournal(
-        questId: quest.id!,
-        logDate: today,
-        completed: true,
-        expDelta: 0,
-        reason: choice ? 'complete_success' : 'complete_no_harvest',
-        createdAt: DateTime.now().toIso8601String(),
-      ));
-      return;
-    }
-
-    if (choice) {
-      // 有收获：总经验 +expReward；增益技能 +expReward
-      await cp.applyExpDelta(quest.expReward);
-      if (quest.targetSkillId != null) {
-        await sp.applyExpDeltaToSkill(quest.targetSkillId!, quest.expReward, propagateToParent: true);
-      }
-      await jp.upsert(QuestJournal(
-        questId: quest.id!,
-        logDate: today,
-        completed: true,
-        expDelta: quest.expReward,
-        reason: 'complete_success',
-        createdAt: DateTime.now().toIso8601String(),
-      ));
-    } else {
-      // 无收获：总经验 -expReward*50%；惩罚技能 -expReward
-      final penalty = (quest.expReward * 0.5).round();
-      await cp.applyExpDelta(-penalty);
-      if (quest.lossSkillId != null) {
-        await sp.applyExpDeltaToSkill(quest.lossSkillId!, -quest.expReward);
-      }
-      await jp.upsert(QuestJournal(
-        questId: quest.id!,
-        logDate: today,
-        completed: true,
-        expDelta: -penalty,
-        reason: 'complete_no_harvest',
-        createdAt: DateTime.now().toIso8601String(),
-      ));
-    }
-
-    await qp.setQuestCompleted(quest.id!);
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: EldenTheme.bgCard,
-          content: Text(
-            choice ? '支线完成：获得经验与技能成长' : '支线完成：无收获，已扣除经验/技能经验',
-            style: const TextStyle(color: EldenTheme.textLight),
-          ),
-          behavior: SnackBarBehavior.floating,
         ),
       );
     }

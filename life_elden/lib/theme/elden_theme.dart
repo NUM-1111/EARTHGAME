@@ -146,10 +146,5 @@ class EldenTheme {
             side: BorderSide(color: gold.withOpacity(0.4)),
           ),
         ),
-        snackBarTheme: const SnackBarThemeData(
-          backgroundColor: bgCard,
-          contentTextStyle: TextStyle(color: textLight),
-          behavior: SnackBarBehavior.floating,
-        ),
       );
 }
