@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/elden_theme.dart';
 import '../providers/skill_provider.dart';
+import '../providers/quest_provider.dart';
 import '../models/skill.dart';
 
 class SkillTreePage extends StatelessWidget {
@@ -246,6 +247,7 @@ class _SkillRootCardState extends State<_SkillRootCard> {
 
   Future<void> _archiveSkill(BuildContext context, Skill skill) async {
     final sp = context.read<SkillProvider>();
+    final qp = context.read<QuestProvider>();
     final ok = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -263,6 +265,8 @@ class _SkillRootCardState extends State<_SkillRootCard> {
         false;
     if (!ok) return;
     await sp.archiveSkill(skill.id!);
+    final subtreeIds = sp.collectDescendantSkillIdsForUi(skill.id!);
+    await qp.archiveQuestsBySkillIds(subtreeIds, rootSkillId: skill.id!);
   }
 }
 
@@ -355,6 +359,7 @@ class _SkillChildTile extends StatelessWidget {
 
   Future<void> _archiveSkill(BuildContext context, Skill skill) async {
     final sp = context.read<SkillProvider>();
+    final qp = context.read<QuestProvider>();
     final ok = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -372,6 +377,8 @@ class _SkillChildTile extends StatelessWidget {
         false;
     if (!ok) return;
     await sp.archiveSkill(skill.id!);
+    final subtreeIds = sp.collectDescendantSkillIdsForUi(skill.id!);
+    await qp.archiveQuestsBySkillIds(subtreeIds, rootSkillId: skill.id!);
   }
 }
 
@@ -408,6 +415,7 @@ class _ArchivedSkillTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sp = context.read<SkillProvider>();
+    final qp = context.read<QuestProvider>();
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -425,7 +433,13 @@ class _ArchivedSkillTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextButton.icon(
-              onPressed: () => sp.restoreSkill(skill.id!),
+              onPressed: () async {
+                await sp.restoreSkill(skill.id!);
+                // Only restore quests if restoring a root skill (matches cascade-archive behavior).
+                if (skill.parentId == null) {
+                  await qp.restoreAutoArchivedQuestsBySkillRoot(skill.id!);
+                }
+              },
               icon: const Icon(Icons.unarchive, size: 18),
               label: const Text('恢复'),
             ),

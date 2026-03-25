@@ -14,6 +14,8 @@ class Quest {
   final String lastDebuffAppliedDate; // YYYY-MM-DD or ''
   final bool isArchived;
   final String archivedAt; // ISO8601 or ''
+  final String? archivedReason; // 'user' | 'skill' | null
+  final int? archivedBySkillId; // root skill id that triggered archiving
 
   Quest({
     this.id,
@@ -31,6 +33,8 @@ class Quest {
     this.lastDebuffAppliedDate = '',
     this.isArchived = false,
     this.archivedAt = '',
+    this.archivedReason,
+    this.archivedBySkillId,
   });
 
   Map<String, dynamic> toMap() => {
@@ -49,6 +53,8 @@ class Quest {
         'last_debuff_applied_date': lastDebuffAppliedDate,
         'is_archived': isArchived ? 1 : 0,
         'archived_at': archivedAt.isEmpty ? null : archivedAt,
+        'archived_reason': archivedReason,
+        'archived_by_skill_id': archivedBySkillId,
       };
 
   factory Quest.fromMap(Map<String, dynamic> m) => Quest(
@@ -67,6 +73,8 @@ class Quest {
         lastDebuffAppliedDate: m['last_debuff_applied_date'] as String? ?? '',
         isArchived: (m['is_archived'] as int? ?? 0) == 1,
         archivedAt: m['archived_at'] as String? ?? '',
+        archivedReason: m['archived_reason'] as String?,
+        archivedBySkillId: m['archived_by_skill_id'] as int?,
       );
 
   Quest copyWith({
@@ -85,6 +93,8 @@ class Quest {
     String? lastDebuffAppliedDate,
     bool? isArchived,
     String? archivedAt,
+    String? archivedReason,
+    int? archivedBySkillId,
   }) => Quest(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -101,5 +111,7 @@ class Quest {
         lastDebuffAppliedDate: lastDebuffAppliedDate ?? this.lastDebuffAppliedDate,
         isArchived: isArchived ?? this.isArchived,
         archivedAt: archivedAt ?? this.archivedAt,
+        archivedReason: archivedReason ?? this.archivedReason,
+        archivedBySkillId: archivedBySkillId ?? this.archivedBySkillId,
       );
 }

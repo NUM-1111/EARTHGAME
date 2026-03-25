@@ -146,14 +146,29 @@ class SkillProvider extends ChangeNotifier {
   }
 
   Future<void> archiveSkill(int id) async {
-    final idx = skills.indexWhere((s) => s.id == id);
-    if (idx == -1) return;
     final now = DateTime.now().toIso8601String();
-    final updated = skills[idx].copyWith(isArchived: true, archivedAt: now);
-    skills[idx] = updated;
-    if (!kIsWeb) {
-      await _db.update('skills', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+    final ids = _collectDescendantSkillIds(id);
+    if (ids.isEmpty) return;
+
+    bool changed = false;
+    for (int i = 0; i < skills.length; i++) {
+      final s = skills[i];
+      if (s.id == null) continue;
+      if (!ids.contains(s.id)) continue;
+      if (s.isArchived && s.archivedAt.isNotEmpty) continue;
+      skills[i] = s.copyWith(isArchived: true, archivedAt: now);
+      changed = true;
     }
+    if (!changed) return;
+
+    if (!kIsWeb) {
+      for (final sid in ids) {
+        final s = byId(sid);
+        if (s == null) continue;
+        await _db.update('skills', s.toMap(), where: 'id = ?', whereArgs: [sid]);
+      }
+    }
+
     if (kIsWeb) {
       _webStore.skills = skills.map((s) => s).toList();
     }
@@ -163,16 +178,72 @@ class SkillProvider extends ChangeNotifier {
   Future<void> restoreSkill(int id) async {
     final idx = skills.indexWhere((s) => s.id == id);
     if (idx == -1) return;
-    final updated = skills[idx].copyWith(isArchived: false, archivedAt: '');
-    skills[idx] = updated;
+
+    // Restore root skill should restore its whole subtree (because root archive is cascade).
+    final restoring = skills[idx];
+    final shouldRestoreSubtree = restoring.parentId == null;
+    final ids = shouldRestoreSubtree ? _collectDescendantSkillIds(id) : <int>{id};
+
+    bool changed = false;
+    for (int i = 0; i < skills.length; i++) {
+      final s = skills[i];
+      if (s.id == null) continue;
+      if (!ids.contains(s.id)) continue;
+
+      var updated = s.copyWith(isArchived: false, archivedAt: '');
+      // If parent is missing or archived, reparent to root (restore_as_root).
+      if (updated.parentId != null) {
+        final parent = byId(updated.parentId!);
+        if (parent == null || parent.isArchived) {
+          updated = updated.copyWith(parentId: null);
+        }
+      }
+
+      if (skills[i] != updated) {
+        skills[i] = updated;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
     if (!kIsWeb) {
-      await _db.update('skills', updated.toMap(), where: 'id = ?', whereArgs: [id]);
+      for (final sid in ids) {
+        final s = byId(sid);
+        if (s == null) continue;
+        await _db.update('skills', s.toMap(), where: 'id = ?', whereArgs: [sid]);
+      }
     }
     if (kIsWeb) {
       _webStore.skills = skills.map((s) => s).toList();
     }
     notifyListeners();
   }
+
+  Set<int> _collectDescendantSkillIds(int rootId) {
+    final root = byId(rootId);
+    if (root == null || root.id == null) return <int>{};
+
+    final result = <int>{rootId};
+    bool added = true;
+    while (added) {
+      added = false;
+      for (final s in skills) {
+        final sid = s.id;
+        if (sid == null) continue;
+        final pid = s.parentId;
+        if (pid == null) continue;
+        if (result.contains(pid) && !result.contains(sid)) {
+          result.add(sid);
+          added = true;
+        }
+      }
+    }
+    return result;
+  }
+
+  // Expose for UI to coordinate quest archiving without duplicating logic.
+  Set<int> collectDescendantSkillIdsForUi(int rootId) => _collectDescendantSkillIds(rootId);
 
   /// Completely delete a skill.
   ///

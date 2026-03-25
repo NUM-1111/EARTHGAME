@@ -56,6 +56,11 @@ class QuestProvider extends ChangeNotifier {
 
   Future<void> ensureLoaded() => load();
 
+  Future<void> reload() async {
+    _loadFuture = null;
+    await load();
+  }
+
   Future<void> _loadInternal() async {
     if (kIsWeb) {
       _webStore.ensureInit();
@@ -198,7 +203,12 @@ class QuestProvider extends ChangeNotifier {
     final idx = quests.indexWhere((q) => q.id == questId);
     if (idx == -1) return;
     final now = DateTime.now().toIso8601String();
-    final updated = quests[idx].copyWith(isArchived: true, archivedAt: now);
+    final updated = quests[idx].copyWith(
+      isArchived: true,
+      archivedAt: now,
+      archivedReason: 'user',
+      archivedBySkillId: null,
+    );
     quests[idx] = updated;
     if (!kIsWeb) {
       await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
@@ -212,7 +222,12 @@ class QuestProvider extends ChangeNotifier {
   Future<void> restoreQuest(int questId) async {
     final idx = quests.indexWhere((q) => q.id == questId);
     if (idx == -1) return;
-    final updated = quests[idx].copyWith(isArchived: false, archivedAt: '');
+    final updated = quests[idx].copyWith(
+      isArchived: false,
+      archivedAt: '',
+      archivedReason: null,
+      archivedBySkillId: null,
+    );
     quests[idx] = updated;
     if (!kIsWeb) {
       await _db.update('quests', updated.toMap(), where: 'id = ?', whereArgs: [questId]);
@@ -220,6 +235,95 @@ class QuestProvider extends ChangeNotifier {
     if (kIsWeb) {
       _webStore.quests = quests.map((q) => q).toList();
     }
+    notifyListeners();
+  }
+
+  Future<void> archiveQuestsBySkillIds(Set<int> skillIds, {required int rootSkillId}) async {
+    if (skillIds.isEmpty) return;
+    final now = DateTime.now().toIso8601String();
+
+    bool changed = false;
+    for (int i = 0; i < quests.length; i++) {
+      final q = quests[i];
+      if (q.isArchived) continue;
+      final linked = (q.targetSkillId != null && skillIds.contains(q.targetSkillId)) ||
+          (q.lossSkillId != null && skillIds.contains(q.lossSkillId));
+      if (!linked) continue;
+      quests[i] = q.copyWith(
+        isArchived: true,
+        archivedAt: now,
+        archivedReason: 'skill',
+        archivedBySkillId: rootSkillId,
+      );
+      changed = true;
+    }
+
+    if (!changed) return;
+
+    if (kIsWeb) {
+      _webStore.quests = quests.map((q) => q).toList();
+      notifyListeners();
+      return;
+    }
+
+    final db = await _db.database;
+    final placeholders = List.filled(skillIds.length, '?').join(',');
+    final args = [...skillIds, ...skillIds];
+    await db.rawUpdate(
+      '''
+UPDATE quests
+SET is_archived = 1,
+    archived_at = ?,
+    archived_reason = 'skill',
+    archived_by_skill_id = ?
+WHERE is_archived = 0
+  AND ((target_skill_id IN ($placeholders)) OR (loss_skill_id IN ($placeholders)))
+''',
+      [now, rootSkillId, ...args],
+    );
+
+    notifyListeners();
+  }
+
+  Future<void> restoreAutoArchivedQuestsBySkillRoot(int rootSkillId) async {
+    bool changed = false;
+    for (int i = 0; i < quests.length; i++) {
+      final q = quests[i];
+      if (!q.isArchived) continue;
+      if (q.archivedReason != 'skill') continue;
+      if (q.archivedBySkillId != rootSkillId) continue;
+      quests[i] = q.copyWith(
+        isArchived: false,
+        archivedAt: '',
+        archivedReason: null,
+        archivedBySkillId: null,
+      );
+      changed = true;
+    }
+
+    if (!changed) return;
+
+    if (kIsWeb) {
+      _webStore.quests = quests.map((q) => q).toList();
+      notifyListeners();
+      return;
+    }
+
+    final db = await _db.database;
+    await db.rawUpdate(
+      '''
+UPDATE quests
+SET is_archived = 0,
+    archived_at = NULL,
+    archived_reason = NULL,
+    archived_by_skill_id = NULL
+WHERE is_archived = 1
+  AND archived_reason = 'skill'
+  AND archived_by_skill_id = ?
+''',
+      [rootSkillId],
+    );
+
     notifyListeners();
   }
 
