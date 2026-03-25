@@ -188,6 +188,14 @@ class SkillProvider extends ChangeNotifier {
       final usedByQuest = _webStore.quests.any((q) => q.targetSkillId == skillId || q.lossSkillId == skillId);
       if (usedByQuest) return false;
 
+      // Reparent children to roots to avoid “orphan skills” after deleting a parent.
+      for (int i = 0; i < skills.length; i++) {
+        final s = skills[i];
+        if (s.parentId == skillId) {
+          skills[i] = s.copyWith(parentId: null);
+        }
+      }
+
       skills.removeAt(idx);
       _webStore.skills = skills.map((s) => s).toList();
       notifyListeners();
@@ -200,6 +208,17 @@ class SkillProvider extends ChangeNotifier {
       whereArgs: [skillId, skillId],
     );
     if (refRows.isNotEmpty) return false;
+
+    // SQLite: Reparent children to roots to avoid “orphan skills” after deleting a parent.
+    final childIdxs = <int>[];
+    for (int i = 0; i < skills.length; i++) {
+      if (skills[i].parentId == skillId) childIdxs.add(i);
+    }
+    for (final i in childIdxs) {
+      final child = skills[i].copyWith(parentId: null);
+      skills[i] = child;
+      await _db.update('skills', child.toMap(), where: 'id = ?', whereArgs: [child.id]);
+    }
 
     await _db.delete('skills', where: 'id = ?', whereArgs: [skillId]);
     skills.removeAt(idx);

@@ -79,10 +79,10 @@ class QuestPage extends StatelessWidget {
     final dueDaysCtrl = TextEditingController(text: '3');
     String type = 'daily';
     int? targetSkillId;
-    int? lossSkillId;
     bool debuffEnabled = true;
 
-    final skills = context.read<SkillProvider>().skills;
+    // Only allow linking to active (non-archived) skills to avoid “关联到找不到的技能”.
+    final skills = context.read<SkillProvider>().activeItems;
 
     showDialog(
       context: context,
@@ -110,8 +110,6 @@ class QuestPage extends StatelessWidget {
                   ],
                   onChanged: (v) => setDialogState(() {
                     type = v ?? 'daily';
-                    // side requires two skills by new rule
-                    if (type != 'side') lossSkillId = null;
                   }),
                 ),
                 const SizedBox(height: 10),
@@ -129,20 +127,6 @@ class QuestPage extends StatelessWidget {
                   onChanged: (v) => setDialogState(() => targetSkillId = v),
                 ),
                 if (type == 'side') ...[
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<int?>(
-                    value: lossSkillId,
-                    dropdownColor: EldenTheme.bgCard,
-                    decoration: const InputDecoration(labelText: '惩罚技能（必选）'),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('请选择', style: TextStyle(color: EldenTheme.textDim))),
-                      ...skills.map((s) => DropdownMenuItem(
-                            value: s.id,
-                            child: Text(s.name, style: const TextStyle(color: EldenTheme.textLight)),
-                          )),
-                    ],
-                    onChanged: (v) => setDialogState(() => lossSkillId = v),
-                  ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: dueDaysCtrl,
@@ -183,34 +167,56 @@ class QuestPage extends StatelessWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
             TextButton(
-              onPressed: () {
-                if (titleCtrl.text.trim().isNotEmpty) {
-                  final exp = int.tryParse(expCtrl.text) ?? 10;
-                  final safeExp = exp <= 0 ? 1 : exp;
-                  if (type == 'side' && (targetSkillId == null || lossSkillId == null)) {
-                    _showEldenSnackBar(
-                      context,
-                      content: const Row(
-                        children: [
-                          Icon(Icons.info_outline, color: EldenTheme.gold, size: 18),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '支线任务需要选择「增益技能」和「惩罚技能」',
-                              style: TextStyle(color: EldenTheme.gold, fontWeight: FontWeight.w600),
-                            ),
+              onPressed: () async {
+                final title = titleCtrl.text.trim();
+                if (title.isEmpty) {
+                  _showEldenSnackBar(
+                    context,
+                    content: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: EldenTheme.gold, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '请输入任务标题',
+                            style: TextStyle(color: EldenTheme.gold, fontWeight: FontWeight.w600),
                           ),
-                        ],
-                      ),
-                    );
-                    return;
-                  }
+                        ),
+                      ],
+                    ),
+                  );
+                  return;
+                }
+
+                final exp = int.tryParse(expCtrl.text) ?? 10;
+                final safeExp = exp <= 0 ? 1 : exp;
+
+                if (type == 'side' && targetSkillId == null) {
+                  _showEldenSnackBar(
+                    context,
+                    content: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: EldenTheme.gold, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '支线任务需要选择「增益技能」',
+                            style: TextStyle(color: EldenTheme.gold, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                  return;
+                }
+
+                try {
                   final today = DateTime.now().toIso8601String().substring(0, 10);
-                  context.read<QuestProvider>().addQuest(Quest(
-                        title: titleCtrl.text.trim(),
+                  await context.read<QuestProvider>().addQuest(Quest(
+                        title: title,
                         type: type,
                         targetSkillId: targetSkillId,
-                        lossSkillId: lossSkillId,
+                        lossSkillId: null,
                         expReward: safeExp,
                         description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
                         createdDate: today,
@@ -219,8 +225,41 @@ class QuestPage extends StatelessWidget {
                         debuffDueDays: type == 'side' ? (int.tryParse(dueDaysCtrl.text) ?? 3) : null,
                         lastDebuffAppliedDate: '',
                       ));
+                  if (context.mounted) {
+                    _showEldenSnackBar(
+                      context,
+                      content: Row(
+                        children: [
+                          const Icon(Icons.check_circle_outline, color: EldenTheme.green, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '已创建${EldenTheme.questTypeLabel(type)}任务：$title',
+                              style: const TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  _showEldenSnackBar(
+                    context,
+                    content: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: EldenTheme.red, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '创建失败：$e',
+                            style: const TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 }
-                Navigator.pop(ctx);
               },
               child: const Text('创建', style: TextStyle(color: EldenTheme.gold)),
             ),

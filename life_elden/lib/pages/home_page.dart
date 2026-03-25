@@ -570,9 +570,12 @@ class _CurrentMainQuestCard extends StatelessWidget {
               const Text('当前主线', style: TextStyle(color: EldenTheme.gold, fontSize: 14, fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
               Text(q.title, style: const TextStyle(color: EldenTheme.textLight, fontSize: 14, fontWeight: FontWeight.w600)),
-              if (skillName != null) ...[
+              if (q.targetSkillId != null) ...[
                 const SizedBox(height: 6),
-                Text('关联技能：$skillName', style: const TextStyle(color: EldenTheme.textDim, fontSize: 12)),
+                Text(
+                  '关联技能：${skillName ?? '已删除/不可用'}',
+                  style: const TextStyle(color: EldenTheme.textDim, fontSize: 12),
+                ),
               ],
               if (q.description != null && q.description!.trim().isNotEmpty) ...[
                 const SizedBox(height: 6),
