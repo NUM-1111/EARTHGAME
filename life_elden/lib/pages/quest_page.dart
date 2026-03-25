@@ -19,12 +19,13 @@ class QuestPage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('任 务'),
           actions: [
-            IconButton(
-              tooltip: '已归档',
+            TextButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ArchivedQuestPage()),
               ),
-              icon: const Icon(Icons.archive),
+              icon: const Icon(Icons.archive, size: 20),
+              label: const Text('已归档任务'),
+              style: TextButton.styleFrom(foregroundColor: EldenTheme.gold),
             ),
           ],
           bottom: TabBar(
@@ -594,10 +595,52 @@ class _ArchivedQuestTile extends StatelessWidget {
           '${EldenTheme.questTypeLabel(quest.type)}  ·  ${quest.status == 'completed' ? '已完成' : '进行中'}',
           style: const TextStyle(color: EldenTheme.textDim, fontSize: 11),
         ),
-        trailing: TextButton.icon(
-          onPressed: () => qp.restoreQuest(quest.id!),
-          icon: const Icon(Icons.unarchive, size: 18),
-          label: const Text('恢复'),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton.icon(
+              onPressed: () => qp.restoreQuest(quest.id!),
+              icon: const Icon(Icons.unarchive, size: 18),
+              label: const Text('恢复'),
+            ),
+            IconButton(
+              tooltip: '彻底删除（不可恢复）',
+              icon: Icon(Icons.delete_forever, size: 18, color: EldenTheme.red.withOpacity(0.9)),
+              onPressed: () async {
+                final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('彻底删除任务', style: TextStyle(color: EldenTheme.gold)),
+                        content: Text(
+                          '将「${quest.title}」从数据中永久删除？将同时清理该任务的日志与日常连击记录。',
+                          style: const TextStyle(color: EldenTheme.textLight),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('彻底删除', style: TextStyle(color: EldenTheme.gold)),
+                          ),
+                        ],
+                      ),
+                    ) ??
+                    false;
+                if (!ok) return;
+
+                final deleted = await qp.purgeQuest(quest.id!);
+                if (!context.mounted) return;
+                if (deleted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: EldenTheme.bgCard,
+                      content: const Text('任务已彻底删除'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
         ),
       ),
     );

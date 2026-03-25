@@ -223,6 +223,38 @@ class QuestProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Completely delete a quest and its related records.
+  /// Also removes the quest's journal entries and daily streak log.
+  ///
+  /// Returns `true` if deleted, `false` otherwise.
+  Future<bool> purgeQuest(int questId) async {
+    final idx = quests.indexWhere((q) => q.id == questId);
+    if (idx == -1) return false;
+
+    // SQLite: remove dependent rows first to avoid FK issues and orphan logs.
+    if (!kIsWeb) {
+      await _db.delete('quest_journals', where: 'quest_id = ?', whereArgs: [questId]);
+      await _db.delete('streak_logs', where: 'quest_id = ?', whereArgs: [questId]);
+      await _db.delete('quests', where: 'id = ?', whereArgs: [questId]);
+      streakLogs.removeWhere((s) => s.questId == questId);
+    } else {
+      quests.removeAt(idx);
+      // Remove streak logs for daily quests
+      streakLogs.removeWhere((s) => s.questId == questId);
+      // Remove web journal entries (stored as raw maps)
+      _webStore.questJournals.removeWhere((m) => (m['quest_id'] as int) == questId);
+      _webStore.quests = quests.map((q) => q).toList();
+      _webStore.streakLogs = streakLogs.map((s) => s).toList();
+      notifyListeners();
+      return true;
+    }
+
+    // Update in-memory list for both platforms
+    quests.removeAt(idx);
+    notifyListeners();
+    return true;
+  }
+
   Future<DebuffApplyResult> applyPendingDebuffs(CharacterProvider cp, JournalProvider jp) async {
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().substring(0, 10);

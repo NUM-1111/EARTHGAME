@@ -173,4 +173,37 @@ class SkillProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  /// Completely delete a skill.
+  ///
+  /// Strict protection rule:
+  /// - If any quest references this skill as `target_skill_id` or `loss_skill_id`,
+  ///   return `false` and do not delete.
+  /// - Otherwise delete the skill (SQLite delete / Web remove) and return `true`.
+  Future<bool> purgeSkill(int skillId) async {
+    final idx = skills.indexWhere((s) => s.id == skillId);
+    if (idx == -1) return false;
+
+    if (kIsWeb) {
+      final usedByQuest = _webStore.quests.any((q) => q.targetSkillId == skillId || q.lossSkillId == skillId);
+      if (usedByQuest) return false;
+
+      skills.removeAt(idx);
+      _webStore.skills = skills.map((s) => s).toList();
+      notifyListeners();
+      return true;
+    }
+
+    final refRows = await _db.query(
+      'quests',
+      where: '(target_skill_id = ? OR loss_skill_id = ?)',
+      whereArgs: [skillId, skillId],
+    );
+    if (refRows.isNotEmpty) return false;
+
+    await _db.delete('skills', where: 'id = ?', whereArgs: [skillId]);
+    skills.removeAt(idx);
+    notifyListeners();
+    return true;
+  }
 }

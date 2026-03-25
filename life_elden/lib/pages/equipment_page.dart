@@ -20,10 +20,11 @@ class _EquipmentPageState extends State<EquipmentPage> {
       appBar: AppBar(
         title: Text(_showArchived ? '装 备 库（已归档）' : '装 备 库'),
         actions: [
-          IconButton(
-            tooltip: _showArchived ? '返回背包' : '查看已归档',
+          TextButton.icon(
             onPressed: () => setState(() => _showArchived = !_showArchived),
-            icon: Icon(_showArchived ? Icons.inventory_2 : Icons.archive),
+            icon: Icon(_showArchived ? Icons.inventory_2 : Icons.archive, size: 20),
+            label: Text(_showArchived ? '返回背包' : '已归档'),
+            style: TextButton.styleFrom(foregroundColor: EldenTheme.gold),
           ),
         ],
       ),
@@ -196,6 +197,33 @@ class _EquipmentCard extends StatelessWidget {
                         tooltip: '恢复',
                         onPressed: () => ep.restoreEquipment(equipment.id!),
                         icon: const Icon(Icons.unarchive, size: 20, color: EldenTheme.gold),
+                      ),
+                    if (archivedMode)
+                      IconButton(
+                        tooltip: '彻底删除（不可恢复）',
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('彻底删除装备', style: TextStyle(color: EldenTheme.gold)),
+                                  content: Text(
+                                    '将「${equipment.name}」从数据中永久删除？此操作不可恢复。',
+                                    style: const TextStyle(color: EldenTheme.textLight),
+                                  ),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('彻底删除', style: TextStyle(color: EldenTheme.gold)),
+                                    ),
+                                  ],
+                                ),
+                              ) ??
+                              false;
+                          if (!ok) return;
+                          ep.purgeEquipment(equipment.id!);
+                        },
+                        icon: Icon(Icons.delete_forever, size: 20, color: EldenTheme.red.withOpacity(0.9)),
                       ),
                     // Rarity badge
                     Container(

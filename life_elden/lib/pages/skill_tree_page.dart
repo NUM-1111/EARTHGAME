@@ -421,10 +421,52 @@ class _ArchivedSkillTile extends StatelessWidget {
           skill.parentId == null ? '根技能' : '子技能（parentId=${skill.parentId}）',
           style: const TextStyle(color: EldenTheme.textDim, fontSize: 11),
         ),
-        trailing: TextButton.icon(
-          onPressed: () => sp.restoreSkill(skill.id!),
-          icon: const Icon(Icons.unarchive, size: 18),
-          label: const Text('恢复'),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton.icon(
+              onPressed: () => sp.restoreSkill(skill.id!),
+              icon: const Icon(Icons.unarchive, size: 18),
+              label: const Text('恢复'),
+            ),
+            IconButton(
+              tooltip: '彻底删除（不可恢复）',
+              icon: Icon(Icons.delete_forever, size: 18, color: EldenTheme.red.withOpacity(0.9)),
+              onPressed: () async {
+                final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('彻底删除技能', style: TextStyle(color: EldenTheme.gold)),
+                        content: Text(
+                          '将「${skill.name}」从数据中永久删除？如果该技能被任务引用，将无法删除。',
+                          style: const TextStyle(color: EldenTheme.textLight),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('彻底删除', style: TextStyle(color: EldenTheme.gold)),
+                          ),
+                        ],
+                      ),
+                    ) ??
+                    false;
+                if (!ok) return;
+
+                final deleted = await sp.purgeSkill(skill.id!);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: EldenTheme.bgCard,
+                    content: Text(
+                      deleted ? '技能已彻底删除' : '该技能被任务引用，已阻止彻底删除',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
