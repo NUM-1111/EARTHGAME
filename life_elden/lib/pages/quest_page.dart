@@ -279,6 +279,29 @@ class _QuestCard extends StatelessWidget {
                 ],
                 const Spacer(),
                 IconButton(
+                  tooltip: '删除（归档）',
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('归档任务', style: TextStyle(color: EldenTheme.gold)),
+                            content: Text('将「${quest.title}」移入已归档？', style: const TextStyle(color: EldenTheme.textLight)),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('归档', style: TextStyle(color: EldenTheme.gold)),
+                              ),
+                            ],
+                          ),
+                        ) ??
+                        false;
+                    if (!ok) return;
+                    qp.archiveQuest(quest.id!);
+                  },
+                  icon: Icon(Icons.delete_outline, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
+                ),
+                IconButton(
                   tooltip: '编辑描述',
                   onPressed: () => _editDescription(context, quest),
                   icon: Icon(Icons.edit_note, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
@@ -502,7 +525,10 @@ class _QuestCard extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: EldenTheme.bgCard,
-          content: Text(choice ? '支线完成：获得经验与技能成长' : '支线完成：无收获，已扣除经验/技能经验'),
+          content: Text(
+            choice ? '支线完成：获得经验与技能成长' : '支线完成：无收获，已扣除经验/技能经验',
+            style: const TextStyle(color: EldenTheme.textLight),
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );

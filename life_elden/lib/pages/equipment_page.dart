@@ -187,6 +187,30 @@ class _EquipmentCard extends StatelessWidget {
                         style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w600),
                       ),
                     ),
+                    if (!archivedMode)
+                      IconButton(
+                        tooltip: '删除（归档）',
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('归档装备', style: TextStyle(color: EldenTheme.gold)),
+                                  content: Text('将「${equipment.name}」移入已归档？', style: const TextStyle(color: EldenTheme.textLight)),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('归档', style: TextStyle(color: EldenTheme.gold)),
+                                    ),
+                                  ],
+                                ),
+                              ) ??
+                              false;
+                          if (!ok) return;
+                          ep.archiveEquipment(equipment.id!);
+                        },
+                        icon: Icon(Icons.delete_outline, size: 20, color: EldenTheme.textDim.withOpacity(0.8)),
+                      ),
                     IconButton(
                       tooltip: '编辑描述',
                       onPressed: archivedMode ? null : () => _editBuffDescription(context, equipment),
