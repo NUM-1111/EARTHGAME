@@ -159,7 +159,7 @@ class SkillProvider extends ChangeNotifier {
       skills[i] = s.copyWith(isArchived: true, archivedAt: now);
       changed = true;
     }
-    if (!changed) return false;
+    if (!changed) return;
 
     if (!kIsWeb) {
       for (final sid in ids) {
@@ -222,7 +222,7 @@ class SkillProvider extends ChangeNotifier {
       }
     }
 
-    if (!changed) return;
+    if (!changed) return false;
 
     if (!kIsWeb) {
       for (final sid in ids) {

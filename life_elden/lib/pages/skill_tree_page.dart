@@ -455,7 +455,33 @@ class _ArchivedSkillTile extends StatelessWidget {
           children: [
             TextButton.icon(
               onPressed: () async {
-                await sp.restoreSkill(skill.id!);
+                final restored = await sp.restoreSkill(skill.id!);
+                if (!context.mounted) return;
+                if (!restored) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: EldenTheme.bgCard,
+                      content: Row(
+                        children: [
+                          const Icon(Icons.info_outline, color: EldenTheme.gold, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '父技能仍处于归档状态，请先恢复父技能。',
+                              style: const TextStyle(color: EldenTheme.textLight, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: EldenTheme.gold.withOpacity(0.3)),
+                      ),
+                    ),
+                  );
+                  return;
+                }
                 // Only restore quests if restoring a root skill (matches cascade-archive behavior).
                 if (skill.parentId == null) {
                   await qp.restoreAutoArchivedQuestsBySkillRoot(skill.id!);
