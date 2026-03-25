@@ -8,6 +8,21 @@ import '../providers/journal_provider.dart';
 import '../models/quest_journal.dart';
 import '../models/quest.dart';
 
+void _showEldenSnackBar(BuildContext context, {required Widget content}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      backgroundColor: EldenTheme.bgCard,
+      content: content,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: EldenTheme.gold.withOpacity(0.3)),
+      ),
+      duration: const Duration(seconds: 2),
+    ),
+  );
+}
+
 class QuestPage extends StatelessWidget {
   const QuestPage({super.key});
 
@@ -173,8 +188,20 @@ class QuestPage extends StatelessWidget {
                   final exp = int.tryParse(expCtrl.text) ?? 10;
                   final safeExp = exp <= 0 ? 1 : exp;
                   if (type == 'side' && (targetSkillId == null || lossSkillId == null)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('支线任务需要选择“增益技能”和“惩罚技能”')),
+                    _showEldenSnackBar(
+                      context,
+                      content: const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: EldenTheme.gold, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '支线任务需要选择「增益技能」和「惩罚技能」',
+                              style: TextStyle(color: EldenTheme.gold, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                     return;
                   }
@@ -388,15 +415,17 @@ class _QuestCard extends StatelessWidget {
         createdAt: DateTime.now().toIso8601String(),
       ));
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: EldenTheme.bgCard,
-            content: Text(
-              '支线完成：获得 $reward 经验！',
-              style: const TextStyle(color: EldenTheme.textLight),
-            ),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+        _showEldenSnackBar(
+          context,
+          content: Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: EldenTheme.gold, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                '支线完成：获得 $reward 经验！',
+                style: const TextStyle(color: EldenTheme.gold, fontWeight: FontWeight.w600),
+              ),
+            ],
           ),
         );
       }
@@ -567,15 +596,27 @@ class _ArchivedQuestTile extends StatelessWidget {
 
                 final deleted = await qp.purgeQuest(quest.id!);
                 if (!context.mounted) return;
-                if (deleted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: EldenTheme.bgCard,
-                      content: const Text('任务已彻底删除'),
-                      behavior: SnackBarBehavior.floating,
+                if (!deleted) {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('没有内容', style: TextStyle(color: EldenTheme.gold)),
+                      content: const Text('该归档任务已不存在或已被删除。', style: TextStyle(color: EldenTheme.textLight)),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+                      ],
                     ),
                   );
+                  return;
                 }
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: EldenTheme.bgCard,
+                    content: const Text('任务已彻底删除'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
               },
             ),
           ],
